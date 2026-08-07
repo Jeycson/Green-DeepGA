@@ -2,10 +2,10 @@
 """ Created on Sep 1 2024    @author: user
 """
 
-from DeepGA.Operators import *
-from DeepGA.EncodingClass import Encoding
-from DeepGA.Decoding import *
-from DeepGA.DistributedTraining import *
+from Operators import *
+from EncodingClass import Encoding
+from Decoding import *
+from DistributedTraining import *
 from torch.utils.data import DataLoader
 import timeit
 import torch
