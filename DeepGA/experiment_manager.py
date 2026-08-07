@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from DeepGA import deepGA, final_evaluation
+from variants import deepGA, green_DeepGA_v2
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -155,11 +155,19 @@ class ExperimentManager:
 
         start_time = time.perf_counter()
 
-        # 3. Llamar DIRECTAMENTE a la función original deepGA
+        # 3. Llamar a la función deseada
         print("\n" + "=" * 50)
         print("Iniciando ejecución de DeepGA original...")
         print("=" * 50)
-        results_df, final_pop, bestind = deepGA(
+        
+        """
+            En este punto se puede elegir el algoritmo que se desea ejecutar.
+            Los posibles candidatos son:
+            - deepGA: Algoritmo original de DeepGA (basado en DenseBlocks y skip-connections)
+            - green_DeepGA_v2: Variante de DeepGa con parelización del entrenemaiento de los modelos CNN generados
+        """
+        
+        results_df, final_pop, bestind = green_DeepGA_v2(
             execution=execution,
             memoryC=memoryC,
             train_epochs=train_epochs,
