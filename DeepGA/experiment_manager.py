@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2, greenDeepGA_v3
+from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -108,6 +108,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
+        variant: str = "v3",  # "v1", "v2", o "v3"
         memoryC: bool = True,
         train_epochs: int = 5,
         population_size: int = 10,  # N
@@ -123,11 +124,12 @@ class ExperimentManager:
         max_full: int = 4,
         max_params: int = 2000000,
         batch_size: int = 64,
+        num_workers: int = 2,
         chck_dir: str = "./checkpoints/",
         device: torch.device = None
     ):
         """
-        Ejecuta directamente la función original deepGA sobre CIFAR-10
+        Ejecuta la variante seleccionada de DeepGA (v1, v2, o v3) sobre CIFAR-10
         midiendo huella de carbono, tiempos y métricas de la CNN.
         """
         if device is None:
@@ -155,19 +157,12 @@ class ExperimentManager:
 
         start_time = time.perf_counter()
 
-        # 3. Llamar a la función deseada
+        # 3. Llamar a la variante deseada
         print("\n" + "=" * 50)
-        print("Iniciando ejecución de DeepGA original...")
+        print(f"Iniciando ejecución de DeepGA (Variante: {variant.upper()})...")
         print("=" * 50)
         
-        """
-            En este punto se puede elegir el algoritmo que se desea ejecutar.
-            Los posibles candidatos son:
-            - deepGA: Algoritmo original de DeepGA (basado en DenseBlocks y skip-connections)
-            - green_DeepGA_v2: Variante de DeepGa con parelización del entrenemaiento de los modelos CNN generados
-        """
-        
-        results_df, final_pop, bestind = green_DeepGA_v2(
+        common_args = dict(
             execution=execution,
             memoryC=memoryC,
             train_epochs=train_epochs,
@@ -190,9 +185,23 @@ class ExperimentManager:
             n_channels=in_channels,
             n_classes=n_classes,
             out_size=out_size,
-            loss_func=loss_func,
-            num_workers=4
+            loss_func=loss_func
         )
+
+        if variant.lower() == "v3":
+            results_df, final_pop, bestind = green_DeepGA_v3(
+                **common_args,
+                num_workers=num_workers
+            )
+        elif variant.lower() == "v2":
+            results_df, final_pop, bestind = green_DeepGA_v2(
+                **common_args,
+                num_workers=num_workers
+            )
+        else:
+            results_df, final_pop, bestind = deepGA(
+                **common_args
+            )
 
         # 4. Detener tiempos y huella de carbono
         elapsed_seconds = time.perf_counter() - start_time
