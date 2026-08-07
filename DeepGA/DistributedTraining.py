@@ -44,7 +44,7 @@ def loss_epoch(device, model, loss_func, dataset_dl, opt = None):
     #xb, yb = data['image'], data['label']
     xb, yb = data
     xb = xb.type(torch.float32).to(device, dtype = torch.float32)
-    yb = yb.to(device, dtype = torch.float32)
+    yb = yb.to(device, dtype = torch.long)
     #yb = yb.squeeze().long()
     #Obtain model output
     yb_h = model(xb)
