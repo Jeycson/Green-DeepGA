@@ -137,6 +137,7 @@ class ExperimentManager:
         print(f"Cargando dataset CIFAR-10 (batch_size={batch_size}) en dispositivo: {device}...")
         train_dl, val_dl, in_channels, out_size, n_classes = get_cifar10_loaders(batch_size=batch_size)
         loss_func = nn.NLLLoss()
+        n_classes = 3
 
         # 2. Iniciar Medición de Carbono y Tiempo
         tracker = None
