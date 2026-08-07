@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2
+from variants import deepGA, green_DeepGA_v2, greenDeepGA_v3
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -190,7 +190,8 @@ class ExperimentManager:
             n_channels=in_channels,
             n_classes=n_classes,
             out_size=out_size,
-            loss_func=loss_func
+            loss_func=loss_func,
+            num_workers=4
         )
 
         # 4. Detener tiempos y huella de carbono
