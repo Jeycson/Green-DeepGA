@@ -25,7 +25,7 @@ except ImportError:
     CODECARBON_AVAILABLE = False
 
 
-def get_cifar10_loaders(batch_size: int = 64, val_split: float = 0.1, data_root: str = "./data"):
+def get_cifar10_loaders(batch_size: int = 64, val_split: float = 0.1, data_root: str = "/content/drive/MyDrive/CIFAR-10"):
     """Carga y prepara los DataLoaders de CIFAR-10."""
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
@@ -38,8 +38,8 @@ def get_cifar10_loaders(batch_size: int = 64, val_split: float = 0.1, data_root:
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
 
-    full_train = datasets.CIFAR10(root=data_root, train=True, download=True, transform=transform_train)
-    test_ds = datasets.CIFAR10(root=data_root, train=False, download=True, transform=transform_test)
+    full_train = datasets.CIFAR10(root=data_root, train=True, download=False, transform=transform_train)
+    test_ds = datasets.CIFAR10(root=data_root, train=False, download=False, transform=transform_test)
 
     val_size = int(len(full_train) * val_split)
     train_size = len(full_train) - val_size
@@ -137,7 +137,6 @@ class ExperimentManager:
         print(f"Cargando dataset CIFAR-10 (batch_size={batch_size}) en dispositivo: {device}...")
         train_dl, val_dl, in_channels, out_size, n_classes = get_cifar10_loaders(batch_size=batch_size)
         loss_func = nn.NLLLoss()
-        n_classes = 3
 
         # 2. Iniciar Medición de Carbono y Tiempo
         tracker = None
