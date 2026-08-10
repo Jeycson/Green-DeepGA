@@ -239,7 +239,7 @@ class ExperimentManager:
 
         # 3. Llamar a la variante deseada
         print("\n" + "=" * 50)
-        print(f"Iniciando ejecución de DeepGA (Variante: {variant.upper()})...")
+        print(f"Iniciando ejecución de DeepGA (Variante activa: {variant.upper()})...")
         print("=" * 50)
         
         common_args = dict(
