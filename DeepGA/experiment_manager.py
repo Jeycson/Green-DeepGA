@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4
+from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -178,7 +178,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
-        variant: str = "v3",  # "v1", "v2", "v3", o "v4"
+        variant: str = "v5",  # "v1", "v2", "v3", "v4", o "v5"
         memoryC: bool = True,
         train_epochs: int = 5,
         population_size: int = 10,  # N
@@ -196,13 +196,14 @@ class ExperimentManager:
         batch_size: int = 64,
         num_workers: int = 2,
         preload_gpu: bool = True,
+        evaluate_pruned_models: bool = True,
         data_root: str = "/content/drive/MyDrive/CIFAR-10",
         chck_dir: str = "./checkpoints/",
         device: torch.device = None
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, o v4) sobre CIFAR-10
-        midiendo huella de carbono, tiempos y métricas de la CNN.
+        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, o v5) sobre CIFAR-10
+        midiendo huella de carbono, tiempos, métricas de la CNN y precisión de poda (en V5).
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -265,7 +266,14 @@ class ExperimentManager:
             loss_func=loss_func
         )
 
-        if variant.lower() == "v4":
+        pruned_stats = None
+
+        if variant.lower() == "v5":
+            results_df, final_pop, bestind, pruned_stats = green_DeepGA_v5(
+                **common_args,
+                evaluate_pruned_models=evaluate_pruned_models
+            )
+        elif variant.lower() == "v4":
             results_df, final_pop, bestind = green_DeepGA_v4(
                 **common_args
             )
@@ -327,6 +335,22 @@ class ExperimentManager:
             "final_population_raw": final_pop
         }
 
+        if pruned_stats is not None:
+            metrics_summary["pruning_metrics"] = {
+                "total_candidates_checked": pruned_stats.get("total_candidates_checked", 0),
+                "total_pruned_events": pruned_stats.get("total_pruned_events", 0),
+                "pruning_rate_pct": pruned_stats.get("pruning_rate_pct", 0.0),
+                "unique_pruned_count": pruned_stats.get("unique_pruned_count", 0),
+                "correct_prunings": pruned_stats.get("correct_prunings", 0),
+                "false_prunings": pruned_stats.get("false_prunings", 0),
+                "pruning_precision_pct": pruned_stats.get("pruning_precision_pct", 0.0),
+                "good_models_lost_pct": pruned_stats.get("good_models_lost_pct", 0.0),
+                "mean_pruned_fitness": pruned_stats.get("mean_pruned_fitness", 0.0),
+                "mean_pruned_accuracy": pruned_stats.get("mean_pruned_accuracy", 0.0),
+                "pruned_evaluation_dataframe": pruned_stats.get("pruned_evaluation_df", pd.DataFrame()),
+                "pruned_records_raw": pruned_stats.get("pruned_records_raw", [])
+            }
+
         print("\n" + "=" * 55)
         print("           RESUMEN DE MÉTRICAS DEL EXPERIMENTO")
         print("=" * 55)
@@ -344,6 +368,17 @@ class ExperimentManager:
         print(f"   - Capas Convolucionales:   {metrics_summary['conv_layers_count']}")
         print(f"   - Capas Densas (FC):       {metrics_summary['fc_layers_count']}")
         print(f"   - Conexiones Residuales:   {metrics_summary['skip_connections_count']}")
+        
+        if pruned_stats is not None:
+            p_met = metrics_summary["pruning_metrics"]
+            print("-" * 55)
+            print(" ANÁLISIS DE PRECISIÓN DE PODA (PRUNING PRECISION):")
+            print(f"   - Modelos Podados:         {p_met['total_pruned_events']} ({p_met['pruning_rate_pct']}% de candidatos)")
+            print(f"   - Precisión de Poda:       {p_met['pruning_precision_pct']:.2f}% (Podas Correctas)")
+            print(f"   - Falsas Podas (Perdidos): {p_met['good_models_lost_pct']:.2f}%")
+            print(f"   - Fitness Prom. Podados:   {p_met['mean_pruned_fitness']:.4f}")
+            print(f"   - Accuracy Prom. Podados:  {p_met['mean_pruned_accuracy']:.2f}%")
+
         print("=" * 55)
 
         return metrics_summary
