@@ -272,6 +272,7 @@ class ExperimentManager:
         surrogate_stats = None
 
         if variant.lower() == "v6":
+            print("entro")
             results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v6(
                 **common_args,
                 pool_candidates_factor=pool_candidates_factor,
