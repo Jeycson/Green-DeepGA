@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8
+from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -178,7 +178,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
-        variant: str = "v8",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", o "v8"
+        variant: str = "v9",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", o "v9"
         memoryC: bool = True,
         train_epochs: int = 5,
         population_size: int = 10,  # N
@@ -199,13 +199,16 @@ class ExperimentManager:
         evaluate_pruned_models: bool = True,
         pool_candidates_factor: int = 5,
         kappa: float = 0.1,
+        mr_min: float = 0.10,
+        mr_max: float = 0.85,
         data_root: str = "/content/drive/MyDrive/CIFAR-10",
         chck_dir: str = "./checkpoints/",
         device: torch.device = None
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, v5, v6, v7, o v8) sobre CIFAR-10
-        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5) y subrogado (en V6/V8).
+        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, v5, v6, v7, v8, o v9) sobre CIFAR-10
+        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9)
+        y mutación adaptativa (en V9).
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -271,7 +274,15 @@ class ExperimentManager:
         pruned_stats = None
         surrogate_stats = None
 
-        if variant.lower() == "v8":
+        if variant.lower() == "v9":
+            results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v9(
+                **common_args,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa,
+                mr_min=mr_min,
+                mr_max=mr_max
+            )
+        elif variant.lower() == "v8":
             results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v8(
                 **common_args,
                 pool_candidates_factor=pool_candidates_factor,
