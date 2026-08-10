@@ -36,16 +36,19 @@ def metrics_batch(target, output):
 def loss_epoch(device, model, loss_func, dataset_dl, opt = None):
   loss = 0.0
   metric = 0.0
-  len_data = len(dataset_dl.dataset)  
-  #for inputs, targets in tqdm(dataset_dl):
+  len_data = len(dataset_dl.dataset) if hasattr(dataset_dl, 'dataset') else len(dataset_dl)
   for i, data in enumerate(dataset_dl, 0):
-  
-    #print('batch: ', i)
-    #xb, yb = data['image'], data['label']
     xb, yb = data
-    xb = xb.type(torch.float32).to(device, dtype = torch.float32)
-    yb = yb.to(device, dtype = torch.long)
-    #yb = yb.squeeze().long()
+    if xb.device != device:
+      xb = xb.to(device, dtype=torch.float32, non_blocking=True)
+    elif xb.dtype != torch.float32:
+      xb = xb.type(torch.float32)
+
+    if yb.device != device:
+      yb = yb.to(device, dtype=torch.long, non_blocking=True)
+    elif yb.dtype != torch.long:
+      yb = yb.long()
+
     #Obtain model output
     yb_h = model(xb)
 

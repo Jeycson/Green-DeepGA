@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3
+from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -25,11 +25,59 @@ except ImportError:
     CODECARBON_AVAILABLE = False
 
 
-def get_cifar10_loaders(batch_size: int = 64, val_split: float = 0.1, data_root: str = "/content/drive/MyDrive/CIFAR-10"):
-    """Carga y prepara los DataLoaders de CIFAR-10."""
+class FastGPUDatasetWrapper:
+    """Wrapper para retornar la cantidad total de muestras en dataset_dl.dataset."""
+    def __init__(self, num_samples: int):
+        self.num_samples = num_samples
+
+    def __len__(self):
+        return self.num_samples
+
+
+class FastGPULoader:
+    """
+    Iterador ultra-rápido que almacena y realiza el batching / shuffling
+    directamente en la VRAM de la GPU, eliminando transferencias CPU-GPU por época.
+    """
+    def __init__(self, x: torch.Tensor, y: torch.Tensor, batch_size: int = 64, shuffle: bool = True):
+        self.x = x
+        self.y = y
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.num_samples = len(self.x)
+        self.dataset = FastGPUDatasetWrapper(self.num_samples)
+
+    def __len__(self):
+        # Número de lotes (batches) por época
+        return (self.num_samples + self.batch_size - 1) // self.batch_size
+
+    def __iter__(self):
+        if self.shuffle:
+            indices = torch.randperm(self.num_samples, device=self.x.device)
+        else:
+            indices = torch.arange(self.num_samples, device=self.x.device)
+
+        for start_idx in range(0, self.num_samples, self.batch_size):
+            end_idx = min(start_idx + self.batch_size, self.num_samples)
+            batch_idx = indices[start_idx:end_idx]
+            yield self.x[batch_idx], self.y[batch_idx]
+
+
+def get_cifar10_loaders(
+    batch_size: int = 64,
+    val_split: float = 0.1,
+    data_root: str = "/content/drive/MyDrive/CIFAR-10",
+    preload_gpu: bool = True,
+    device: torch.device = None
+):
+    """
+    Carga y prepara los DataLoaders de CIFAR-10.
+    Si preload_gpu=True, precarga el dataset 100% en la VRAM de la GPU con FastGPULoader.
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
@@ -38,15 +86,37 @@ def get_cifar10_loaders(batch_size: int = 64, val_split: float = 0.1, data_root:
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
 
-    full_train = datasets.CIFAR10(root=data_root, train=True, download=False, transform=transform_train)
-    test_ds = datasets.CIFAR10(root=data_root, train=False, download=False, transform=transform_test)
+    try:
+        full_train = datasets.CIFAR10(root=data_root, train=True, download=False, transform=transform_train)
+        test_ds = datasets.CIFAR10(root=data_root, train=False, download=False, transform=transform_test)
+    except Exception:
+        fallback_root = "./data"
+        full_train = datasets.CIFAR10(root=fallback_root, train=True, download=True, transform=transform_train)
+        test_ds = datasets.CIFAR10(root=fallback_root, train=False, download=True, transform=transform_test)
 
     val_size = int(len(full_train) * val_split)
     train_size = len(full_train) - val_size
     train_ds, val_ds = random_split(full_train, [train_size, val_size])
 
-    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, pin_memory=torch.cuda.is_available())
-    val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, pin_memory=torch.cuda.is_available())
+    if preload_gpu:
+        print(f"Precargando dataset CIFAR-10 completo en VRAM del dispositivo ({device})...")
+        loader_train_all = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
+        loader_val_all = DataLoader(val_ds, batch_size=len(val_ds), shuffle=False)
+
+        x_train, y_train = next(iter(loader_train_all))
+        x_val, y_val = next(iter(loader_val_all))
+
+        x_train_gpu = x_train.to(device, dtype=torch.float32)
+        y_train_gpu = y_train.to(device, dtype=torch.long)
+        x_val_gpu = x_val.to(device, dtype=torch.float32)
+        y_val_gpu = y_val.to(device, dtype=torch.long)
+
+        train_dl = FastGPULoader(x_train_gpu, y_train_gpu, batch_size=batch_size, shuffle=True)
+        val_dl = FastGPULoader(x_val_gpu, y_val_gpu, batch_size=batch_size, shuffle=False)
+        print("Dataset precargado en VRAM exitosamente.")
+    else:
+        train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, pin_memory=torch.cuda.is_available())
+        val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, pin_memory=torch.cuda.is_available())
 
     return train_dl, val_dl, 3, 32, 10  # in_channels, out_size, n_classes
 
@@ -108,7 +178,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
-        variant: str = "v3",  # "v1", "v2", o "v3"
+        variant: str = "v3",  # "v1", "v2", "v3", o "v4"
         memoryC: bool = True,
         train_epochs: int = 5,
         population_size: int = 10,  # N
@@ -125,11 +195,13 @@ class ExperimentManager:
         max_params: int = 2000000,
         batch_size: int = 64,
         num_workers: int = 2,
+        preload_gpu: bool = True,
+        data_root: str = "/content/drive/MyDrive/CIFAR-10",
         chck_dir: str = "./checkpoints/",
         device: torch.device = None
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1, v2, o v3) sobre CIFAR-10
+        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, o v4) sobre CIFAR-10
         midiendo huella de carbono, tiempos y métricas de la CNN.
         """
         if device is None:
@@ -137,7 +209,12 @@ class ExperimentManager:
 
         # 1. Cargar CIFAR-10
         print(f"Cargando dataset CIFAR-10 (batch_size={batch_size}) en dispositivo: {device}...")
-        train_dl, val_dl, in_channels, out_size, n_classes = get_cifar10_loaders(batch_size=batch_size)
+        train_dl, val_dl, in_channels, out_size, n_classes = get_cifar10_loaders(
+            batch_size=batch_size,
+            data_root=data_root,
+            preload_gpu=preload_gpu,
+            device=device
+        )
         loss_func = nn.NLLLoss()
 
         # 2. Iniciar Medición de Carbono y Tiempo
@@ -188,7 +265,11 @@ class ExperimentManager:
             loss_func=loss_func
         )
 
-        if variant.lower() == "v3":
+        if variant.lower() == "v4":
+            results_df, final_pop, bestind = green_DeepGA_v4(
+                **common_args
+            )
+        elif variant.lower() == "v3":
             results_df, final_pop, bestind = green_DeepGA_v3(
                 **common_args,
                 num_workers=num_workers
@@ -267,10 +348,3 @@ class ExperimentManager:
 
         return metrics_summary
 
-    def run_modeepga(self, **kwargs):
-        """
-        API preparada para la variante multi-objetivo (MODeepGA).
-        """
-        print("Preparado para ejecutar MODeepGA...")
-        # Aquí conectas directamente con tu runner de MODeepGA cuando comiences las pruebas multi-objetivo.
-        pass
