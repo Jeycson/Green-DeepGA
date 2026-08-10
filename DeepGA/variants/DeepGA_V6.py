@@ -39,43 +39,71 @@ def extract_genome_features(e, max_conv: int = 5, max_full: int = 4) -> np.ndarr
     features = []
 
     # 1. Dimensiones macroestructurales
-    features.append(e.n_conv / float(max_conv))
-    features.append(e.n_full / float(max_full))
+    features.append(float(e.n_conv) / float(max_conv))
+    features.append(float(e.n_full) / float(max_full))
 
     # 2. Características por capa convolucional (fijo a max_conv)
-    total_filters = 0
-    total_kernels = 0
-    pool_count = 0
-    for i in range(max_conv):
-        if i < e.n_conv:
-            layer = e.first_level[i]
-            nf = layer.get('nfilters', 16)
-            ks = layer.get('fsize', 3)
-            pool = 1.0 if layer.get('pool') else 0.0
+    total_filters = 0.0
+    total_kernels = 0.0
+    pool_count = 0.0
 
-            features.extend([nf / 256.0, ks / 9.0, pool, 1.0])
+    for i in range(max_conv):
+        if i < e.n_conv and i < len(e.first_level):
+            layer = e.first_level[i]
+            nf = float(layer.get('nfilters', 16))
+            ks = float(layer.get('fsize', 3))
+            ps = float(layer.get('psize', 2))
+            pool_val = str(layer.get('pool', 'off')).lower().strip()
+
+            # Codificación numérica de pooling: 0.0 = 'off', 0.5 = 'avg', 1.0 = 'max'
+            if pool_val == 'max':
+                pool_code = 1.0
+                has_pool = 1.0
+            elif pool_val == 'avg':
+                pool_code = 0.5
+                has_pool = 1.0
+            else:
+                pool_code = 0.0
+                has_pool = 0.0
+
+            features.extend([nf / 256.0, ks / 9.0, ps / 5.0, pool_code, 1.0])
             total_filters += nf
             total_kernels += ks
-            pool_count += int(layer.get('pool', False))
+            pool_count += has_pool
         else:
-            features.extend([0.0, 0.0, 0.0, 0.0])
+            features.extend([0.0, 0.0, 0.0, 0.0, 0.0])
 
-    # 3. Conexiones residuales (segundo nivel)
+    # 3. Características por capa densa / Fully Connected (fijo a max_full)
+    total_neurons = 0.0
+    fc_start = e.n_conv
+    for j in range(max_full):
+        idx = fc_start + j
+        if idx < len(e.first_level):
+            fc_layer = e.first_level[idx]
+            neurons = float(fc_layer.get('neurons', 32))
+            features.extend([neurons / 256.0, 1.0])
+            total_neurons += neurons
+        else:
+            features.extend([0.0, 0.0])
+
+    # 4. Conexiones residuales (segundo nivel)
     max_skips = (max_conv * (max_conv - 1)) // 2
     skips = getattr(e, 'second_level', [])
-    for i in range(max_skips):
-        if i < len(skips):
-            features.append(float(skips[i]))
+    for k in range(max_skips):
+        if k < len(skips):
+            features.append(float(skips[k]))
         else:
             features.append(0.0)
 
-    # 4. Métricas globales derivadas
+    # 5. Métricas globales derivadas
     features.append(total_filters / (256.0 * max_conv))
     features.append(total_kernels / (9.0 * max_conv))
+    features.append(total_neurons / (256.0 * max_full))
     features.append(pool_count / float(max_conv))
-    features.append(sum(skips) / max(1, max_skips))
+    features.append(float(sum(skips)) / max(1.0, float(max_skips)))
 
     return np.array(features, dtype=np.float32)
+
 
 
 class SurrogatePredictor:
