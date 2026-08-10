@@ -10,8 +10,10 @@ from .DeepGA_V4 import green_DeepGA_v4
 from .DeepGA_V5 import green_DeepGA_v5
 from .DeepGA_V6 import green_DeepGA_v6
 from .DeepGA_V7 import green_DeepGA_v7
+from .DeepGA_V8 import green_DeepGA_v8
 
-__all__ = ["deepGA", "green_DeepGA_v2", "green_DeepGA_v3", "green_DeepGA_v4", "green_DeepGA_v5", "green_DeepGA_v6", "green_DeepGA_v7", "final_evaluation"]
+__all__ = ["deepGA", "green_DeepGA_v2", "green_DeepGA_v3", "green_DeepGA_v4", "green_DeepGA_v5", "green_DeepGA_v6", "green_DeepGA_v7", "green_DeepGA_v8", "final_evaluation"]
+
 
 
 

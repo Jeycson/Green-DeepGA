@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7
+from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -178,7 +178,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
-        variant: str = "v7",  # "v1", "v2", "v3", "v4", "v5", "v6", o "v7"
+        variant: str = "v8",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", o "v8"
         memoryC: bool = True,
         train_epochs: int = 5,
         population_size: int = 10,  # N
@@ -204,8 +204,8 @@ class ExperimentManager:
         device: torch.device = None
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, v5, v6, o v7) sobre CIFAR-10
-        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5) y subrogado (en V6).
+        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, v5, v6, v7, o v8) sobre CIFAR-10
+        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5) y subrogado (en V6/V8).
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -271,7 +271,13 @@ class ExperimentManager:
         pruned_stats = None
         surrogate_stats = None
 
-        if variant.lower() == "v7":
+        if variant.lower() == "v8":
+            results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v8(
+                **common_args,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa
+            )
+        elif variant.lower() == "v7":
             results_df, final_pop, bestind = green_DeepGA_v7(
                 **common_args
             )
