@@ -278,7 +278,7 @@ def green_DeepGA_v3(execution: int, memoryC: bool, train_epochs: int, train_dl: 
                     )
                     if is_pruned:
                         pruned_count += 1
-                        print(f" [✂️ PODA V3] Hijo {cand_idx+1} descartado antes de GPU: {reason}. Re-mutando intento {retries+1}/{max_prune_retries}...")
+                        print(f" [PODA V3] Hijo {cand_idx+1} descartado antes de GPU: {reason}. Re-mutando intento {retries+1}/{max_prune_retries}...")
                         curr_c = deepcopy(curr_c)
                         mutation(curr_c)
                         retries += 1
