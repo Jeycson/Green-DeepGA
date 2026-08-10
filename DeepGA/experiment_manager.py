@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5
+from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5, green_DeepGA_v6
 from Decoding import decoding, CNN
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -178,7 +178,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
-        variant: str = "v5",  # "v1", "v2", "v3", "v4", o "v5"
+        variant: str = "v6",  # "v1", "v2", "v3", "v4", "v5", o "v6"
         memoryC: bool = True,
         train_epochs: int = 5,
         population_size: int = 10,  # N
@@ -197,13 +197,15 @@ class ExperimentManager:
         num_workers: int = 2,
         preload_gpu: bool = True,
         evaluate_pruned_models: bool = True,
+        pool_candidates_factor: int = 5,
+        kappa: float = 0.1,
         data_root: str = "/content/drive/MyDrive/CIFAR-10",
         chck_dir: str = "./checkpoints/",
         device: torch.device = None
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, o v5) sobre CIFAR-10
-        midiendo huella de carbono, tiempos, métricas de la CNN y precisión de poda (en V5).
+        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, v5, o v6) sobre CIFAR-10
+        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5) y subrogado (en V6).
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -267,8 +269,15 @@ class ExperimentManager:
         )
 
         pruned_stats = None
+        surrogate_stats = None
 
-        if variant.lower() == "v5":
+        if variant.lower() == "v6":
+            results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v6(
+                **common_args,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa
+            )
+        elif variant.lower() == "v5":
             results_df, final_pop, bestind, pruned_stats = green_DeepGA_v5(
                 **common_args,
                 evaluate_pruned_models=evaluate_pruned_models
@@ -351,6 +360,9 @@ class ExperimentManager:
                 "pruned_records_raw": pruned_stats.get("pruned_records_raw", [])
             }
 
+        if surrogate_stats is not None:
+            metrics_summary["surrogate_metrics"] = surrogate_stats
+
         print("\n" + "=" * 55)
         print("           RESUMEN DE MÉTRICAS DEL EXPERIMENTO")
         print("=" * 55)
@@ -378,6 +390,15 @@ class ExperimentManager:
             print(f"   - Falsas Podas (Perdidos): {p_met['good_models_lost_pct']:.2f}%")
             print(f"   - Fitness Prom. Podados:   {p_met['mean_pruned_fitness']:.4f}")
             print(f"   - Accuracy Prom. Podados:  {p_met['mean_pruned_accuracy']:.2f}%")
+
+        if surrogate_stats is not None:
+            print("-" * 55)
+            print(" MÉTRICAS DEL META-MODELO SUBROGADO (V6):")
+            print(f"   - Candidatos en CPU:       {surrogate_stats['total_cpu_screened']}")
+            print(f"   - Evaluaciones en GPU:     {surrogate_stats['total_gpu_evaluations']}")
+            print(f"   - Factor de Exploración:   {surrogate_stats['exploration_multiplier']}x más búsqueda con 0 coste GPU")
+            print(f"   - Error MAE Predicción:    {surrogate_stats['mean_absolute_error_fit']:.4f}")
+            print(f"   - Muestras del Subrogado:  {surrogate_stats['surrogate_training_samples']}")
 
         print("=" * 55)
 
