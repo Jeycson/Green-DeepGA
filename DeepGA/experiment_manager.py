@@ -298,6 +298,7 @@ class ExperimentManager:
                 num_workers=num_workers
             )
         else:
+            print("Variante no reconocida. Ejecutando DeepGA original (v1)...")
             results_df, final_pop, bestind = deepGA(
                 **common_args
             )
