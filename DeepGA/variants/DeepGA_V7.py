@@ -145,8 +145,8 @@ def green_DeepGA_v7(execution: int, memoryC: bool, train_epochs: int, train_dl: 
                 # Cruce Topológicamente Estructurado (primer y segundo nivel emparejados)
                 c1, c2 = crossover_v7(p1, p2, min_conv=min_conv, max_conv=max_conv, min_full=min_full, max_full=max_full)
             else:
-                c1 = deepcopy(p1)
-                c2 = deepcopy(p2)
+                c1 = copy.deepcopy(p1)
+                c2 = copy.deepcopy(p2)
 
             if mr >= random.uniform(0, 1):
                 mutation_v7(c1, min_conv=min_conv, max_conv=max_conv, min_full=min_full, max_full=max_full)
