@@ -239,7 +239,7 @@ class ExperimentManager:
 
         # 3. Llamar a la variante deseada
         print("\n" + "=" * 50)
-        print(f"Iniciando ejecución de DeepGA (Variante activa: {variant.upper()})...")
+        print(f"Iniciando ejecución de DeepGA (Variante: {variant.upper()})...")
         print("=" * 50)
         
         common_args = dict(
@@ -272,37 +272,31 @@ class ExperimentManager:
         surrogate_stats = None
 
         if variant.lower() == "v6":
-            print("Ejecutando DeepGA optimizado (v6) con poda y subrogado...")
             results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v6(
                 **common_args,
                 pool_candidates_factor=pool_candidates_factor,
                 kappa=kappa
             )
         elif variant.lower() == "v5":
-            print("Ejecutando DeepGA optimizado (v5) con poda y subrogado...")
             results_df, final_pop, bestind, pruned_stats = green_DeepGA_v5(
                 **common_args,
                 evaluate_pruned_models=evaluate_pruned_models
             )
         elif variant.lower() == "v4":
-            print("Ejecutando DeepGA optimizado (v4) con poda y subrogado...")
             results_df, final_pop, bestind = green_DeepGA_v4(
                 **common_args
             )
         elif variant.lower() == "v3":
-            print("Ejecutando DeepGA optimizado (v3) con poda y subrogado...")
             results_df, final_pop, bestind = green_DeepGA_v3(
                 **common_args,
                 num_workers=num_workers
             )
         elif variant.lower() == "v2":
-            print("Ejecutando DeepGA optimizado (v2) con poda y subrogado...")
             results_df, final_pop, bestind = green_DeepGA_v2(
                 **common_args,
                 num_workers=num_workers
             )
         else:
-            print("Variante no reconocida. Ejecutando DeepGA original (v1)...")
             results_df, final_pop, bestind = deepGA(
                 **common_args
             )
