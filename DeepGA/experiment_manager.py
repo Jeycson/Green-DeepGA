@@ -23,6 +23,7 @@ from Decoding import decoding, CNN
 from model_utils import (
     save_best_model,
     load_saved_model,
+    evaluate_model as util_evaluate_model,
     predict_image as util_predict_image,
     generate_confusion_matrix as util_generate_confusion_matrix,
     download_file,
@@ -83,8 +84,12 @@ def get_cifar10_loaders(
     device: torch.device = None
 ):
     """
-    Carga y prepara los DataLoaders de CIFAR-10.
-    Si preload_gpu=True, precarga el dataset 100% en la VRAM de la GPU con FastGPULoader.
+    Carga y prepara los DataLoaders de CIFAR-10 en 3 particiones independientes:
+    1. train_dl: Conjunto de entrenamiento (45,000 imágenes si val_split=0.1)
+    2. val_dl: Conjunto de validación (5,000 imágenes si val_split=0.1, para guiar la evolución genética)
+    3. test_dl: Conjunto de prueba independiente oficial de CIFAR-10 (10,000 imágenes, para evaluación final y matriz de confusión)
+    
+    Si preload_gpu=True, precarga los 3 conjuntos 100% en la VRAM de la GPU con FastGPULoader.
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -111,26 +116,32 @@ def get_cifar10_loaders(
     train_ds, val_ds = random_split(full_train, [train_size, val_size])
 
     if preload_gpu:
-        print(f"Precargando dataset CIFAR-10 completo en VRAM del dispositivo ({device})...")
+        print(f"Precargando dataset CIFAR-10 (Train: {train_size}, Val: {val_size}, Test: {len(test_ds)}) en VRAM del dispositivo ({device})...")
         loader_train_all = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
         loader_val_all = DataLoader(val_ds, batch_size=len(val_ds), shuffle=False)
+        loader_test_all = DataLoader(test_ds, batch_size=len(test_ds), shuffle=False)
 
         x_train, y_train = next(iter(loader_train_all))
         x_val, y_val = next(iter(loader_val_all))
+        x_test, y_test = next(iter(loader_test_all))
 
         x_train_gpu = x_train.to(device, dtype=torch.float32)
         y_train_gpu = y_train.to(device, dtype=torch.long)
         x_val_gpu = x_val.to(device, dtype=torch.float32)
         y_val_gpu = y_val.to(device, dtype=torch.long)
+        x_test_gpu = x_test.to(device, dtype=torch.float32)
+        y_test_gpu = y_test.to(device, dtype=torch.long)
 
         train_dl = FastGPULoader(x_train_gpu, y_train_gpu, batch_size=batch_size, shuffle=True)
         val_dl = FastGPULoader(x_val_gpu, y_val_gpu, batch_size=batch_size, shuffle=False)
-        print("Dataset precargado en VRAM exitosamente.")
+        test_dl = FastGPULoader(x_test_gpu, y_test_gpu, batch_size=batch_size, shuffle=False)
+        print("Dataset completo (Train: 45k, Val: 5k, Test: 10k) precargado en VRAM exitosamente.")
     else:
         train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, pin_memory=torch.cuda.is_available())
         val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, pin_memory=torch.cuda.is_available())
+        test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False, pin_memory=torch.cuda.is_available())
 
-    return train_dl, val_dl, 3, 32, 10  # in_channels, out_size, n_classes
+    return train_dl, val_dl, test_dl, 3, 32, 10  # in_channels, out_size, n_classes
 
 
 def calculate_cnn_metrics(bestind: list, in_channels: int, out_size: int, n_classes: int):
@@ -237,7 +248,7 @@ class ExperimentManager:
 
         # 1. Cargar CIFAR-10
         print(f"Cargando dataset CIFAR-10 (batch_size={batch_size}) en dispositivo: {device}...")
-        train_dl, val_dl, in_channels, out_size, n_classes = get_cifar10_loaders(
+        train_dl, val_dl, test_dl, in_channels, out_size, n_classes = get_cifar10_loaders(
             batch_size=batch_size,
             data_root=data_root,
             preload_gpu=preload_gpu,
@@ -369,13 +380,15 @@ class ExperimentManager:
 
         # 6. Opcional: Entrenamiento final completo del modelo ganador
         trained_final_model = None
+        final_test_acc = None
         if train_final_model and final_train_epochs > 0:
             print(f"\n🚀 Entrenando completamente el modelo ganador por {final_train_epochs} épocas...")
+            print(f"   (Validación durante re-entrenamiento sobre el conjunto de test independiente: 10,000 imágenes)")
             trained_final_model = final_evaluation(
                 execution=execution,
                 bestind=bestind,
                 train_dl=train_dl,
-                val_dl=val_dl,
+                val_dl=test_dl,  # Evaluación sobre el conjunto de prueba independiente oficial (10,000 imágenes)
                 lr=lr,
                 max_params=max_params,
                 w=w,
@@ -389,6 +402,13 @@ class ExperimentManager:
                 variant=variant.lower(),
                 auto_download=auto_download
             )
+
+        # Si el modelo final está entrenado, calcular precisión en test set independiente
+        if trained_final_model is not None:
+            try:
+                final_test_acc = util_evaluate_model(trained_final_model, test_dl, device=device)
+            except Exception:
+                final_test_acc = None
 
         # 7. Guardar y/o descargar automáticamente el mejor modelo
         saved_model_path = None
@@ -415,6 +435,8 @@ class ExperimentManager:
             "carbon_emissions_g_co2": round(emissions_g_co2, 4),
             "energy_consumed_kwh": round(energy_kwh, 6),
             "best_accuracy": bestind[2],
+            "best_val_accuracy": bestind[2],
+            "final_test_accuracy": final_test_acc,
             "best_fitness": bestind[1],
             "best_total_params": cnn_metrics["total_params"],
             "best_trainable_params": cnn_metrics["trainable_params"],
@@ -428,7 +450,8 @@ class ExperimentManager:
             "best_individual_raw": bestind,
             "final_population_raw": final_pop,
             "final_trained_model": trained_final_model,
-            "test_dataloader": val_dl
+            "val_dataloader": val_dl,
+            "test_dataloader": test_dl
         }
 
         if pruned_stats is not None:
@@ -461,7 +484,9 @@ class ExperimentManager:
             print(f" Checkpoint del Modelo:      {saved_model_path}")
         print("-" * 55)
         print(" VARIABLES DE LA MEJOR CNN GENERADA:")
-        print(f"   - Accuracy:                {metrics_summary['best_accuracy']:.2f}%")
+        print(f"   - Val Accuracy (GA 5k):    {metrics_summary['best_val_accuracy']:.2f}%")
+        if metrics_summary.get('final_test_accuracy') is not None:
+            print(f"   - Test Accuracy (Test 10k):{metrics_summary['final_test_accuracy']:.2f}%")
         print(f"   - Fitness:                 {metrics_summary['best_fitness']:.4f}")
         print(f"   - Parámetros Totales:      {metrics_summary['best_total_params']:,}")
         print(f"   - Parámetros Entrenables:  {metrics_summary['best_trainable_params']:,}")
@@ -497,6 +522,10 @@ class ExperimentManager:
     def load_model(self, model_path: str, device: torch.device = None):
         """Carga y reconstruye un modelo guardado a partir de su ruta .pth o .pkl."""
         return load_saved_model(model_path, device=device)
+
+    def evaluate_model(self, model_or_path, dataloader, device: torch.device = None):
+        """Evalúa la precisión de un modelo sobre un DataLoader (ej. test_dataloader con 10,000 imágenes)."""
+        return util_evaluate_model(model_or_path, dataloader, device=device)
 
     def predict_image(self, model_or_path, image_path: str, class_names: list = None, device: torch.device = None):
         """Realiza inferencia sobre una imagen propia."""

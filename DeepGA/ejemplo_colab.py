@@ -32,20 +32,21 @@ resultados = manager.run_deepga(
     save_best_model_file=True, # Guarda automáticamente best_model_v9_exec_1.pth
     train_final_model=True,    # Entrena el ganador para tener los pesos listos
     final_train_epochs=10,     # Épocas de entrenamiento final (ej. 10 a 30)
-    auto_download=False        # Activa True en Colab para descargar directamente
+    auto_download=True        # Activa True en Colab para descargar directamente
 )
 
 # 3. Acceder al modelo guardado
 ruta_modelo = resultados["saved_model_path"]
 print(f"\n✅ Modelo guardado en: {ruta_modelo}")
 
-# 4. Generar Matriz de Confusión sobre el conjunto de prueba
-print("\n📊 Generando Matriz de Confusión...")
+# 4. Generar Matriz de Confusión y Reporte sobre el Test Set independiente (10,000 imágenes)
+#    (Estas 10,000 imágenes NUNCA fueron vistas durante la neuroevolución ni durante la validación)
+print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente (10,000 imágenes)...")
 cm, reporte = manager.generate_confusion_matrix(
     model_or_path=ruta_modelo,
-    dataloader=resultados["test_dataloader"],
+    dataloader=resultados["test_dataloader"],  # 10,000 imágenes oficiales de prueba
     class_names=CLASS_NAMES,
-    title=f"Matriz de Confusión - DeepGA {resultados['variant']}",
+    title=f"Matriz de Confusión (Test Set 10k) - DeepGA {resultados['variant']}",
     save_fig_path="./checkpoints/matriz_confusion_v9.png",
     auto_download_plot=False
 )

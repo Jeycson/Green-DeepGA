@@ -160,6 +160,32 @@ def load_saved_model(model_path: str, device: torch.device = None):
     return model, checkpoint
 
 
+def evaluate_model(
+    model,
+    dataloader,
+    device: torch.device = None
+):
+    """Evalúa un modelo sobre un DataLoader."""
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    model.to(device)
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for data in dataloader:
+            if isinstance(data, (list, tuple)):
+                xb, yb = data[0].to(device), data[1].to(device)
+            else:
+                xb, yb = data["image"].to(device), data["label"].to(device)
+            outputs = model(xb)
+            _, predicted = torch.max(outputs.data, 1)
+            total += yb.size(0)
+            correct += (predicted == yb).sum().item()
+    return 100 * correct / total
+
+
 def predict_image(
     model_or_path,
     image_path: str,
