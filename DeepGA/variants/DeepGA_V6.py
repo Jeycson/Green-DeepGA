@@ -454,4 +454,26 @@ def green_DeepGA_v6(execution: int, memoryC: bool, train_epochs: int, train_dl: 
         'surrogate_training_samples': len(surrogate.train_x_history)
     }
 
+    # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V6)
+    try:
+        from model_utils import save_best_model
+        save_best_model(
+            variant="v6",
+            execution=execution,
+            bestind=bestind,
+            in_channels=n_channels,
+            out_size=out_size,
+            n_classes=n_classes,
+            chck_dir=chck_dir
+        )
+    except Exception as e:
+        print(f"Nota al guardar mejor modelo V6: {e}")
+
     return results, pop, bestind, surrogate_stats
+
+
+def final_evaluation(execution: int, bestind: list, train_dl: DataLoader, val_dl: DataLoader, lr: float,
+                     max_params: int, w: float, device: torch.device, train_epochs: int, loss_func, chck_dir: str,
+                     n_channels: int = 3, n_classes: int = 10, out_size: int = 32, variant: str = "v6", auto_download: bool = False):
+    from variants.DeepGA import final_evaluation as fe
+    return fe(execution, bestind, train_dl, val_dl, lr, max_params, w, device, train_epochs, loss_func, chck_dir, n_channels, n_classes, out_size, variant=variant, auto_download=auto_download)

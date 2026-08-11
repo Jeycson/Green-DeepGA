@@ -482,4 +482,26 @@ def green_DeepGA_v9(execution: int, memoryC: bool, train_epochs: int, train_dl: 
         'mutation_events': mutation_events
     }
 
+    # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V9)
+    try:
+        from model_utils import save_best_model
+        save_best_model(
+            variant="v9",
+            execution=execution,
+            bestind=bestind,
+            in_channels=n_channels,
+            out_size=out_size,
+            n_classes=n_classes,
+            chck_dir=chck_dir
+        )
+    except Exception as e:
+        print(f"Nota al guardar mejor modelo V9: {e}")
+
     return results, pop, bestind, surrogate_stats
+
+
+def final_evaluation(execution: int, bestind: list, train_dl: DataLoader, val_dl: DataLoader, lr: float,
+                     max_params: int, w: float, device: torch.device, train_epochs: int, loss_func, chck_dir: str,
+                     n_channels: int = 3, n_classes: int = 10, out_size: int = 32, variant: str = "v9", auto_download: bool = False):
+    from variants.DeepGA import final_evaluation as fe
+    return fe(execution, bestind, train_dl, val_dl, lr, max_params, w, device, train_epochs, loss_func, chck_dir, n_channels, n_classes, out_size, variant=variant, auto_download=auto_download)

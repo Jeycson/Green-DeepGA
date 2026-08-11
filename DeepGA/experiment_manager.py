@@ -14,8 +14,20 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 
 # Importación directa de la función original
-from variants import deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4, green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9
+from variants import (
+    deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4,
+    green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9,
+    final_evaluation
+)
 from Decoding import decoding, CNN
+from model_utils import (
+    save_best_model,
+    load_saved_model,
+    predict_image as util_predict_image,
+    generate_confusion_matrix as util_generate_confusion_matrix,
+    download_file,
+    download_all_models_zip
+)
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
 try:
@@ -203,12 +215,22 @@ class ExperimentManager:
         mr_max: float = 0.85,
         data_root: str = "/content/drive/MyDrive/CIFAR-10",
         chck_dir: str = "./checkpoints/",
-        device: torch.device = None
+        device: torch.device = None,
+        save_best_model_file: bool = True,
+        train_final_model: bool = False,
+        final_train_epochs: int = 30,
+        auto_download: bool = False
     ):
         """
         Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, v5, v6, v7, v8, o v9) sobre CIFAR-10
         midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9)
         y mutación adaptativa (en V9).
+        
+        Nuevos parámetros:
+        - save_best_model_file (bool): Guarda automáticamente el modelo ganador en formato .pth y .pkl.
+        - train_final_model (bool): Si es True, entrena completamente el modelo ganador por `final_train_epochs`.
+        - final_train_epochs (int): Número de épocas para el entrenamiento final del modelo ganador.
+        - auto_download (bool): Descarga automáticamente el modelo .pth en Google Colab.
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -345,8 +367,49 @@ class ExperimentManager:
         # 5. Extraer métricas de la CNN del mejor individuo
         cnn_metrics = calculate_cnn_metrics(bestind, in_channels, out_size, n_classes)
 
-        # 6. Consolidar reporte de resultados
+        # 6. Opcional: Entrenamiento final completo del modelo ganador
+        trained_final_model = None
+        if train_final_model and final_train_epochs > 0:
+            print(f"\n🚀 Entrenando completamente el modelo ganador por {final_train_epochs} épocas...")
+            trained_final_model = final_evaluation(
+                execution=execution,
+                bestind=bestind,
+                train_dl=train_dl,
+                val_dl=val_dl,
+                lr=lr,
+                max_params=max_params,
+                w=w,
+                device=device,
+                train_epochs=final_train_epochs,
+                loss_func=loss_func,
+                chck_dir=chck_dir,
+                n_channels=in_channels,
+                n_classes=n_classes,
+                out_size=out_size,
+                variant=variant.lower(),
+                auto_download=auto_download
+            )
+
+        # 7. Guardar y/o descargar automáticamente el mejor modelo
+        saved_model_path = None
+        if save_best_model_file:
+            saved_model_path = save_best_model(
+                variant=variant.lower(),
+                execution=execution,
+                bestind=bestind,
+                in_channels=in_channels,
+                out_size=out_size,
+                n_classes=n_classes,
+                chck_dir=chck_dir,
+                trained_model=trained_final_model,
+                cnn_metrics=cnn_metrics,
+                auto_download=auto_download
+            )
+
+        # 8. Consolidar reporte de resultados
         metrics_summary = {
+            "variant": variant.upper(),
+            "execution": execution,
             "execution_time_seconds": round(elapsed_seconds, 2),
             "execution_time_minutes": round(elapsed_seconds / 60.0, 2),
             "carbon_emissions_g_co2": round(emissions_g_co2, 4),
@@ -360,9 +423,12 @@ class ExperimentManager:
             "conv_layers_count": cnn_metrics["conv_layers"],
             "fc_layers_count": cnn_metrics["fc_layers"],
             "skip_connections_count": cnn_metrics["skip_connections"],
+            "saved_model_path": saved_model_path,
             "history_dataframe": results_df,
             "best_individual_raw": bestind,
-            "final_population_raw": final_pop
+            "final_population_raw": final_pop,
+            "final_trained_model": trained_final_model,
+            "test_dataloader": val_dl
         }
 
         if pruned_stats is not None:
@@ -387,9 +453,12 @@ class ExperimentManager:
         print("\n" + "=" * 55)
         print("           RESUMEN DE MÉTRICAS DEL EXPERIMENTO")
         print("=" * 55)
+        print(f" Variante:                   {metrics_summary['variant']}")
         print(f" Tiempo Total de Ejecución:  {metrics_summary['execution_time_seconds']:.2f} s ({metrics_summary['execution_time_minutes']:.2f} min)")
         print(f" Huella de Carbono:          {metrics_summary['carbon_emissions_g_co2']:.4f} gCO2eq")
         print(f" Consumo de Energía:         {metrics_summary['energy_consumed_kwh']:.6f} kWh")
+        if saved_model_path:
+            print(f" Checkpoint del Modelo:      {saved_model_path}")
         print("-" * 55)
         print(" VARIABLES DE LA MEJOR CNN GENERADA:")
         print(f"   - Accuracy:                {metrics_summary['best_accuracy']:.2f}%")
@@ -424,4 +493,42 @@ class ExperimentManager:
         print("=" * 55)
 
         return metrics_summary
+
+    def load_model(self, model_path: str, device: torch.device = None):
+        """Carga y reconstruye un modelo guardado a partir de su ruta .pth o .pkl."""
+        return load_saved_model(model_path, device=device)
+
+    def predict_image(self, model_or_path, image_path: str, class_names: list = None, device: torch.device = None):
+        """Realiza inferencia sobre una imagen propia."""
+        return util_predict_image(model_or_path, image_path, class_names=class_names, device=device)
+
+    def generate_confusion_matrix(
+        self,
+        model_or_path,
+        dataloader=None,
+        class_names: list = None,
+        device: torch.device = None,
+        title: str = "Matriz de Confusión - DeepGA",
+        save_fig_path: str = None,
+        auto_download_plot: bool = False
+    ):
+        """Calcula y grafica la matriz de confusión sobre un DataLoader."""
+        return util_generate_confusion_matrix(
+            model_or_path=model_or_path,
+            dataloader=dataloader,
+            class_names=class_names,
+            device=device,
+            title=title,
+            save_fig_path=save_fig_path,
+            auto_download_plot=auto_download_plot
+        )
+
+    def download_model(self, variant: str = "v9", execution: int = 1, chck_dir: str = "./checkpoints/"):
+        """Descarga el archivo .pth del modelo ganador de la variante seleccionada."""
+        model_file = os.path.join(chck_dir, f"best_model_{variant.lower()}_exec_{execution}.pth")
+        return download_file(model_file)
+
+    def download_all_models(self, chck_dir: str = "./checkpoints/", zip_name: str = "deepga_best_models.zip"):
+        """Empaqueta todos los modelos guardados en un ZIP y los descarga."""
+        return download_all_models_zip(chck_dir=chck_dir, zip_name=zip_name, auto_download=True)
 

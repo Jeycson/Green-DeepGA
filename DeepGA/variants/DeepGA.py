@@ -243,14 +243,29 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
                          columns = ['Accuracy', 'Fitness', 'No. Params', 'MeanFit', 'MeanAcc', 'MeanPar'])
   print(results)
 
+  # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V1)
+  try:
+      from model_utils import save_best_model
+      save_best_model(
+          variant="v1",
+          execution=execution,
+          bestind=bestind,
+          in_channels=n_channels,
+          out_size=out_size,
+          n_classes=n_classes,
+          chck_dir=chck_dir
+      )
+  except Exception as e:
+      print(f"Nota al guardar mejor modelo V1: {e}")
+
   return results, pop, bestind  
 
 
 def final_evaluation(execution: int, bestind: list, train_dl: DataLoader, val_dl: DataLoader, lr: float,
                      max_params: int, w: float, device: torch.device, train_epochs: int, loss_func, chck_dir: str,
-                     n_channels =  int , n_classes=int, out_size = int):
+                     n_channels = int, n_classes = int, out_size = int, variant: str = "v1", auto_download: bool = False):
   
-  chkpoint_obj = Path(chck_dir + "Model_Exec_"+str(execution)+"_Epoch_"+str(train_epochs)+"_point.pkl")
+  chkpoint_obj = Path(os.path.join(chck_dir, f"Model_Exec_{execution}_Epoch_{train_epochs}_point.pkl"))
   if not chkpoint_obj.exists():
      print("Training final model from best individual") 
      start = timeit.default_timer()
@@ -272,6 +287,23 @@ def final_evaluation(execution: int, bestind: list, train_dl: DataLoader, val_dl
      current_state_model: dict = dict(modelo=CNNModel)
      with open(chkpoint_obj, "wb") as p:
          pickle.dump(current_state_model, p)
+
+     # Guardar también formato PyTorch .pth con pesos entrenados
+     try:
+         from model_utils import save_best_model
+         save_best_model(
+             variant=variant,
+             execution=execution,
+             bestind=bestind,
+             in_channels=n_channels,
+             out_size=out_size,
+             n_classes=n_classes,
+             chck_dir=chck_dir,
+             trained_model=CNNModel,
+             auto_download=auto_download
+         )
+     except Exception as e:
+         print(f"Nota al exportar pesos finales: {e}")
 
   else: 
      print("Loading final model")
