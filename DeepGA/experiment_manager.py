@@ -79,7 +79,7 @@ class FastGPULoader:
 def get_cifar10_loaders(
     batch_size: int = 64,
     val_split: float = 0.1,
-    data_root: str = "/content/drive/MyDrive/CIFAR-10",
+    data_root: str = "./data",
     preload_gpu: bool = True,
     device: torch.device = None
 ):
@@ -107,9 +107,11 @@ def get_cifar10_loaders(
         full_train = datasets.CIFAR10(root=data_root, train=True, download=False, transform=transform_train)
         test_ds = datasets.CIFAR10(root=data_root, train=False, download=False, transform=transform_test)
     except Exception:
-        fallback_root = "./data"
-        full_train = datasets.CIFAR10(root=fallback_root, train=True, download=True, transform=transform_train)
-        test_ds = datasets.CIFAR10(root=fallback_root, train=False, download=True, transform=transform_test)
+        target_root = data_root if not data_root.startswith("/content") else "./data"
+        os.makedirs(target_root, exist_ok=True)
+        print(f"Dataset CIFAR-10 no encontrado en '{data_root}'. Descargando automáticamente en '{target_root}'...")
+        full_train = datasets.CIFAR10(root=target_root, train=True, download=True, transform=transform_train)
+        test_ds = datasets.CIFAR10(root=target_root, train=False, download=True, transform=transform_test)
 
     val_size = int(len(full_train) * val_split)
     train_size = len(full_train) - val_size
@@ -224,7 +226,7 @@ class ExperimentManager:
         kappa: float = 0.1,
         mr_min: float = 0.10,
         mr_max: float = 0.85,
-        data_root: str = "/content/drive/MyDrive/CIFAR-10",
+        data_root: str = "./data",
         chck_dir: str = "./checkpoints/",
         device: torch.device = None,
         save_best_model_file: bool = True,

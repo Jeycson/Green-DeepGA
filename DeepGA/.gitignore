@@ -1,1 +1,10 @@
 *.pyc
+__pycache__/
+.venv/
+data/
+checkpoints/
+carbon_logs/
+*.pth
+*.pkl
+*.png
+*.zip
