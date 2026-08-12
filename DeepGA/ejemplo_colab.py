@@ -20,7 +20,7 @@ manager = ExperimentManager(country_iso_code="MEX", track_carbon=True)
 # 2. Ejecutar la neuroevolución guardando y entrenando el mejor modelo
 #    (Nota: Pon auto_download=True si deseas que se descargue automáticamente en Colab)
 resultados = manager.run_deepga(
-    variant="v9",              # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8" o "v9"
+    variant="v10",             # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9" o "v10"
     execution=1,
     population_size=10,        # N: Tamaño de población
     generations=5,             # T: Número de generaciones

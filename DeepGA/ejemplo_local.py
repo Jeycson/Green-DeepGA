@@ -26,8 +26,8 @@ CLASS_NAMES = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', '
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ejecución local de DeepGA con ExperimentManager")
-    parser.add_argument("--variant", type=str, default="v9", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9"],
-                        help="Variante de DeepGA a ejecutar (por defecto: v9)")
+    parser.add_argument("--variant", type=str, default="v10", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10"],
+                        help="Variante de DeepGA a ejecutar (por defecto: v10)")
     parser.add_argument("--execution", type=int, default=1,
                         help="Número identificador de la ejecución (por defecto: 1)")
     parser.add_argument("--pop-size", type=int, default=10,
@@ -62,14 +62,14 @@ def main():
 
     # Detección de dispositivo
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("\n" + "=" * 60)
-    print("      EJECUCIÓN LOCAL DE DEEPGA / EXPERIMENT MANAGER")
-    print("=" * 60)
-    print(f"📌 Dispositivo detectado:    {device}" + (f" ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else " (CPU)"))
-    print(f"📌 Ruta del dataset CIFAR-10: {os.path.abspath(args.data_root)}")
-    print(f"📌 Directorio de checkpoints: {os.path.abspath(args.chck_dir)}")
-    print(f"📌 Variante seleccionada:     {args.variant.upper()}")
-    print("=" * 60 + "\n")
+    print("\n" + "=" * 60, flush=True)
+    print("      EJECUCIÓN LOCAL DE DEEPGA / EXPERIMENT MANAGER", flush=True)
+    print("=" * 60, flush=True)
+    print(f"📌 Dispositivo detectado:    {device}" + (f" ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else " (CPU)"), flush=True)
+    print(f"📌 Ruta del dataset CIFAR-10: {os.path.abspath(args.data_root)}", flush=True)
+    print(f"📌 Directorio de checkpoints: {os.path.abspath(args.chck_dir)}", flush=True)
+    print(f"📌 Variante seleccionada:     {args.variant.upper()}", flush=True)
+    print("=" * 60 + "\n", flush=True)
 
     # 1. Instanciar el gestor de experimentos
     manager = ExperimentManager(
@@ -92,18 +92,22 @@ def main():
         chck_dir=args.chck_dir,
         preload_gpu=not args.no_preload_gpu,
         save_best_model_file=True, # Guarda automáticamente best_model_{variant}_exec_{execution}.pth y .pkl
+        save_txt_report=True,      # Guarda reporte completo de resultados en archivo .txt
         train_final_model=True,    # Entrena el ganador para tener los pesos listos
         final_train_epochs=args.final_epochs,
         auto_download=False        # False en local (los archivos quedan guardados en chck_dir)
     )
 
-    # 3. Acceder al modelo guardado
+    # 3. Acceder al modelo guardado y reporte de texto
     ruta_modelo = resultados["saved_model_path"]
-    print(f"\n✅ Modelo ganador guardado en: {ruta_modelo}")
+    ruta_txt = resultados.get("txt_report_path")
+    print(f"\n✅ Modelo ganador guardado en: {ruta_modelo}", flush=True)
+    if ruta_txt:
+        print(f"📄 Reporte de experimento (.txt): {os.path.abspath(ruta_txt)}", flush=True)
 
     # 4. Generar Matriz de Confusión y Reporte sobre el Test Set independiente (10,000 imágenes)
     #    (Estas 10,000 imágenes NUNCA fueron vistas durante la neuroevolución ni durante la validación)
-    print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente (10,000 imágenes)...")
+    print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente (10,000 imágenes)...", flush=True)
     save_fig_path = os.path.join(args.chck_dir, f"matriz_confusion_{args.variant.lower()}.png")
     cm, reporte = manager.generate_confusion_matrix(
         model_or_path=ruta_modelo,
@@ -113,7 +117,7 @@ def main():
         save_fig_path=save_fig_path,
         auto_download_plot=False
     )
-    print(f"📊 Gráfico de Matriz de Confusión guardado en: {os.path.abspath(save_fig_path)}")
+    print(f"📊 Gráfico de Matriz de Confusión guardado en: {os.path.abspath(save_fig_path)}", flush=True)
 
     # 5. Ejemplo de inferencia con una imagen propia (opcional):
     # if os.path.exists("mi_imagen.jpg"):

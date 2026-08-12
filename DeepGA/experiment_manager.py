@@ -16,7 +16,7 @@ import pandas as pd
 # Importación directa de la función original
 from variants import (
     deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4,
-    green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9,
+    green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9, green_DeepGA_v10,
     final_evaluation
 )
 from Decoding import decoding, CNN
@@ -188,6 +188,128 @@ def calculate_cnn_metrics(bestind: list, in_channels: int, out_size: int, n_clas
     }
 
 
+def save_experiment_report_txt(metrics_summary: dict, chck_dir: str = "./checkpoints/", custom_filename: str = None) -> str:
+    """
+    Genera y guarda un reporte exhaustivo de texto plano (.txt) con todos los resultados,
+    tiempos, huella de carbono, métricas de la CNN ganadora, subrogado/feromonas e historial generacional.
+    """
+    os.makedirs(chck_dir, exist_ok=True)
+    variant = str(metrics_summary.get("variant", "UNKNOWN")).lower()
+    execution = metrics_summary.get("execution", 1)
+
+    if custom_filename is None:
+        filename = f"reporte_experimento_{variant}_exec_{execution}.txt"
+    else:
+        filename = custom_filename
+
+    filepath = os.path.join(chck_dir, filename)
+
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+    lines = []
+    lines.append("=" * 75)
+    lines.append(f"          REPORTE DE EXPERIMENTO - GREEN DEEPGA ({variant.upper()})")
+    lines.append("=" * 75)
+    lines.append(f"Fecha y Hora:             {now_str}")
+    lines.append(f"Variante Ejecutada:       {metrics_summary.get('variant', 'N/A')}")
+    lines.append(f"Ejecución ID:             {execution}")
+    lines.append(f"Dispositivo de Hardware:  {metrics_summary.get('hardware_device', 'GPU / CPU')}")
+    lines.append("-" * 75)
+    lines.append("1. TIEMPO Y EFICIENCIA ENERGÉTICA (GREEN AI)")
+    lines.append("-" * 75)
+    lines.append(f"Tiempo Total de Ejecución: {metrics_summary.get('execution_time_seconds', 0):.2f} s ({metrics_summary.get('execution_time_minutes', 0):.2f} min)")
+    lines.append(f"Huella de Carbono:         {metrics_summary.get('carbon_emissions_g_co2', 0):.4f} gCO2eq")
+    lines.append(f"Consumo Energético:        {metrics_summary.get('energy_consumed_kwh', 0):.6f} kWh")
+    lines.append("-" * 75)
+    lines.append("2. RENDIMIENTO DE LA MEJOR ARQUITECTURA (CNN GANADORA)")
+    lines.append("-" * 75)
+    lines.append(f"Fitness Óptimo:            {metrics_summary.get('best_fitness', 0):.4f}")
+    lines.append(f"Precisión Validación (GA): {metrics_summary.get('best_val_accuracy', 0):.2f}% (Validación durante búsqueda evolutiva)")
+    if metrics_summary.get('final_test_accuracy') is not None:
+        lines.append(f"Precisión Test Set (10k):  {metrics_summary.get('final_test_accuracy', 0):.2f}% (Test set independiente de CIFAR-10)")
+    lines.append(f"Parámetros Totales:        {metrics_summary.get('best_total_params', 0):,}")
+    lines.append(f"Parámetros Entrenables:    {metrics_summary.get('best_trainable_params', 0):,}")
+    lines.append(f"FLOPs Estimados:           {metrics_summary.get('best_estimated_flops', 0):,}")
+    lines.append(f"Tamaño en Memoria:         {metrics_summary.get('best_model_size_mb', 0):.3f} MB")
+    lines.append(f"Capas Convolucionales:     {metrics_summary.get('conv_layers_count', 0)}")
+    lines.append(f"Capas Densas (FC):         {metrics_summary.get('fc_layers_count', 0)}")
+    lines.append(f"Conexiones Residuales:     {metrics_summary.get('skip_connections_count', 0)}")
+    if metrics_summary.get('saved_model_path'):
+        lines.append(f"Ruta Checkpoint .pth:      {os.path.abspath(metrics_summary['saved_model_path'])}")
+
+    # Detalle de capas de la mejor CNN
+    bestind = metrics_summary.get("best_individual_raw")
+    if bestind and len(bestind) > 0 and hasattr(bestind[0], 'first_level'):
+        genome = bestind[0]
+        lines.append("-" * 75)
+        lines.append("3. DETALLE ESTRUCTURAL CAPA POR CAPA")
+        lines.append("-" * 75)
+        lines.append("Capas Convolucionales:")
+        for idx in range(genome.n_conv):
+            if idx < len(genome.first_level):
+                l = genome.first_level[idx]
+                lines.append(f"  [Conv {idx+1}] Filtros: {l.get('nfilters', 'N/A')}, Kernel: {l.get('fsize', 'N/A')}x{l.get('fsize', 'N/A')}, Pool: {l.get('pool', 'off')}, PoolSize: {l.get('psize', 'N/A')}")
+        lines.append("Capas Fully Connected:")
+        for f_idx in range(genome.n_full):
+            r_idx = genome.n_conv + f_idx
+            if r_idx < len(genome.first_level):
+                l = genome.first_level[r_idx]
+                lines.append(f"  [FC {f_idx+1}] Neuronas: {l.get('neurons', 'N/A')}")
+        if hasattr(genome, 'second_level') and genome.second_level:
+            lines.append(f"Conexiones Residuales (Bits de Skip): {genome.second_level}")
+
+    # Métricas de búsqueda asistida (subrogado y feromonas V6 / V8 / V9 / V10)
+    surr = metrics_summary.get("surrogate_metrics")
+    if surr:
+        lines.append("-" * 75)
+        lines.append("4. MÉTRICAS DE BÚSQUEDA ASISTIDA (META-MODELO SUBROGADO & ACO FEROMONAS)")
+        lines.append("-" * 75)
+        lines.append(f"Candidatos Explorados en CPU:  {surr.get('total_cpu_screened', 0)}")
+        lines.append(f"Evaluaciones en GPU:           {surr.get('total_gpu_evaluations', 0)}")
+        lines.append(f"Factor de Exploración:         {surr.get('exploration_multiplier', 0)}x más arquitecturas con 0 coste GPU")
+        lines.append(f"Error MAE Predicción Fitness:  {surr.get('mean_absolute_error_fit', 0):.4f}")
+        lines.append(f"Muestras del Subrogado:        {surr.get('surrogate_training_samples', 0)}")
+
+        p_motifs = surr.get("pheromone_motifs")
+        if p_motifs:
+            lines.append("\nMotivos Arquitectónicos Favorecidos por Rastro de Feromonas (ACO):")
+            lines.append(f"  - Número de Capas Favorecido: Conv={p_motifs.get('favored_conv_count')}, FC={p_motifs.get('favored_fc_count')}")
+            for lm in p_motifs.get('layer_motifs', []):
+                lines.append(f"  - Capa {lm['layer']}: Filtros={lm['favored_filters']}, Kernel={lm['favored_kernel']}x{lm['favored_kernel']}, Pool={lm['favored_pool']}")
+            sk_fav = p_motifs.get('reinforced_skip_connections', [])
+            if sk_fav:
+                lines.append(f"  - Conexiones Skip Reforzadas (>60% probabilidad): {sk_fav}")
+
+    # Métricas de Poda (V5)
+    prun = metrics_summary.get("pruning_metrics")
+    if prun:
+        lines.append("-" * 75)
+        lines.append("4. ANÁLISIS DE PRECISIÓN DE PODA (PRUNING PRECISION V5)")
+        lines.append("-" * 75)
+        lines.append(f"Modelos Podados:               {prun.get('total_pruned_events', 0)} ({prun.get('pruning_rate_pct', 0)}% de candidatos)")
+        lines.append(f"Precisión de Poda:             {prun.get('pruning_precision_pct', 0):.2f}% (Podas Correctas)")
+        lines.append(f"Falsas Podas (Modelos Perdidos):{prun.get('good_models_lost_pct', 0):.2f}%")
+        lines.append(f"Fitness Promedio Podados:      {prun.get('mean_pruned_fitness', 0):.4f}")
+        lines.append(f"Accuracy Promedio Podados:     {prun.get('mean_pruned_accuracy', 0):.2f}%")
+
+    # Historial generacional
+    df = metrics_summary.get("history_dataframe")
+    if df is not None and not df.empty:
+        lines.append("-" * 75)
+        lines.append("5. HISTORIAL GENERACIONAL DE LA EVOLUCIÓN")
+        lines.append("-" * 75)
+        lines.append(df.to_string(index=True))
+
+    lines.append("=" * 75)
+    lines.append("                         FIN DEL REPORTE")
+    lines.append("=" * 75)
+
+    report_text = "\n".join(lines)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(report_text)
+
+    return filepath
+
+
 class ExperimentManager:
     """
     Gestor para ejecutar variantes de DeepGA/MODeepGA y registrar:
@@ -203,7 +325,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
-        variant: str = "v9",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", o "v9"
+        variant: str = "v10",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", o "v10"
         memoryC: bool = True,
         train_epochs: int = 5,
         population_size: int = 10,  # N
@@ -226,20 +348,26 @@ class ExperimentManager:
         kappa: float = 0.1,
         mr_min: float = 0.10,
         mr_max: float = 0.85,
+        rho: float = 0.10,
+        alpha: float = 1.2,
+        top_k_ratio: float = 0.35,
         data_root: str = "./data",
         chck_dir: str = "./checkpoints/",
         device: torch.device = None,
         save_best_model_file: bool = True,
+        save_txt_report: bool = True,
         train_final_model: bool = False,
         final_train_epochs: int = 30,
         auto_download: bool = False
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1, v2, v3, v4, v5, v6, v7, v8, o v9) sobre CIFAR-10
-        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9)
-        y mutación adaptativa (en V9).
+        Ejecuta la variante seleccionada de DeepGA (v1 .. v10) sobre CIFAR-10
+        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9/V10),
+        mutación adaptativa (en V9/V10) y rastro de feromonas ACO (en V10).
         
         Nuevos parámetros:
+        - save_txt_report (bool): Guarda un reporte exhaustivo en formato .txt con todos los resultados y métricas.
+        - rho, alpha, top_k_ratio: Parámetros del sistema de feromonas ACO (en V10).
         - save_best_model_file (bool): Guarda automáticamente el modelo ganador en formato .pth y .pkl.
         - train_final_model (bool): Si es True, entrena completamente el modelo ganador por `final_train_epochs`.
         - final_train_epochs (int): Número de épocas para el entrenamiento final del modelo ganador.
@@ -249,7 +377,7 @@ class ExperimentManager:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # 1. Cargar CIFAR-10
-        print(f"Cargando dataset CIFAR-10 (batch_size={batch_size}) en dispositivo: {device}...")
+        print(f"Cargando dataset CIFAR-10 (batch_size={batch_size}) en dispositivo: {device}...", flush=True)
         train_dl, val_dl, test_dl, in_channels, out_size, n_classes = get_cifar10_loaders(
             batch_size=batch_size,
             data_root=data_root,
@@ -276,9 +404,9 @@ class ExperimentManager:
         start_time = time.perf_counter()
 
         # 3. Llamar a la variante deseada
-        print("\n" + "=" * 50)
-        print(f"Iniciando ejecución de DeepGA (Variante: {variant.upper()})...")
-        print("=" * 50)
+        print("\n" + "=" * 50, flush=True)
+        print(f"Iniciando ejecución de DeepGA (Variante: {variant.upper()})...", flush=True)
+        print("=" * 50, flush=True)
         
         common_args = dict(
             execution=execution,
@@ -309,7 +437,18 @@ class ExperimentManager:
         pruned_stats = None
         surrogate_stats = None
 
-        if variant.lower() == "v9":
+        if variant.lower() == "v10":
+            results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v10(
+                **common_args,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa,
+                mr_min=mr_min,
+                mr_max=mr_max,
+                rho=rho,
+                alpha=alpha,
+                top_k_ratio=top_k_ratio
+            )
+        elif variant.lower() == "v9":
             results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v9(
                 **common_args,
                 pool_candidates_factor=pool_candidates_factor,
@@ -429,9 +568,14 @@ class ExperimentManager:
             )
 
         # 8. Consolidar reporte de resultados
+        device_str = str(device)
+        if torch.cuda.is_available() and device.type == "cuda":
+            device_str += f" ({torch.cuda.get_device_name(0)})"
+
         metrics_summary = {
             "variant": variant.upper(),
             "execution": execution,
+            "hardware_device": device_str,
             "execution_time_seconds": round(elapsed_seconds, 2),
             "execution_time_minutes": round(elapsed_seconds / 60.0, 2),
             "carbon_emissions_g_co2": round(emissions_g_co2, 4),
@@ -453,7 +597,8 @@ class ExperimentManager:
             "final_population_raw": final_pop,
             "final_trained_model": trained_final_model,
             "val_dataloader": val_dl,
-            "test_dataloader": test_dl
+            "test_dataloader": test_dl,
+            "txt_report_path": None
         }
 
         if pruned_stats is not None:
@@ -475,51 +620,70 @@ class ExperimentManager:
         if surrogate_stats is not None:
             metrics_summary["surrogate_metrics"] = surrogate_stats
 
-        print("\n" + "=" * 55)
-        print("           RESUMEN DE MÉTRICAS DEL EXPERIMENTO")
-        print("=" * 55)
-        print(f" Variante:                   {metrics_summary['variant']}")
-        print(f" Tiempo Total de Ejecución:  {metrics_summary['execution_time_seconds']:.2f} s ({metrics_summary['execution_time_minutes']:.2f} min)")
-        print(f" Huella de Carbono:          {metrics_summary['carbon_emissions_g_co2']:.4f} gCO2eq")
-        print(f" Consumo de Energía:         {metrics_summary['energy_consumed_kwh']:.6f} kWh")
+        # 9. Guardar Reporte de Resultados en archivo TXT
+        txt_report_path = None
+        if save_txt_report:
+            try:
+                txt_report_path = save_experiment_report_txt(metrics_summary, chck_dir=chck_dir)
+                metrics_summary["txt_report_path"] = txt_report_path
+            except Exception as e:
+                print(f"Nota al generar reporte .txt: {e}", flush=True)
+
+        print("\n" + "=" * 55, flush=True)
+        print("           RESUMEN DE MÉTRICAS DEL EXPERIMENTO", flush=True)
+        print("=" * 55, flush=True)
+        print(f" Variante:                   {metrics_summary['variant']}", flush=True)
+        print(f" Dispositivo:                {metrics_summary['hardware_device']}", flush=True)
+        print(f" Tiempo Total de Ejecución:  {metrics_summary['execution_time_seconds']:.2f} s ({metrics_summary['execution_time_minutes']:.2f} min)", flush=True)
+        print(f" Huella de Carbono:          {metrics_summary['carbon_emissions_g_co2']:.4f} gCO2eq", flush=True)
+        print(f" Consumo de Energía:         {metrics_summary['energy_consumed_kwh']:.6f} kWh", flush=True)
         if saved_model_path:
-            print(f" Checkpoint del Modelo:      {saved_model_path}")
-        print("-" * 55)
-        print(" VARIABLES DE LA MEJOR CNN GENERADA:")
-        print(f"   - Val Accuracy (GA 5k):    {metrics_summary['best_val_accuracy']:.2f}%")
+            print(f" Checkpoint del Modelo:      {saved_model_path}", flush=True)
+        if txt_report_path:
+            print(f" Reporte TXT Generado:       {os.path.abspath(txt_report_path)}", flush=True)
+        print("-" * 55, flush=True)
+        print(" VARIABLES DE LA MEJOR CNN GENERADA:", flush=True)
+        print(f"   - Val Accuracy (GA 5k):    {metrics_summary['best_val_accuracy']:.2f}%", flush=True)
         if metrics_summary.get('final_test_accuracy') is not None:
-            print(f"   - Test Accuracy (Test 10k):{metrics_summary['final_test_accuracy']:.2f}%")
-        print(f"   - Fitness:                 {metrics_summary['best_fitness']:.4f}")
-        print(f"   - Parámetros Totales:      {metrics_summary['best_total_params']:,}")
-        print(f"   - Parámetros Entrenables:  {metrics_summary['best_trainable_params']:,}")
-        print(f"   - FLOPs Estimados:         {metrics_summary['best_estimated_flops']:,}")
-        print(f"   - Tamaño en Memoria:       {metrics_summary['best_model_size_mb']:.3f} MB")
-        print(f"   - Capas Convolucionales:   {metrics_summary['conv_layers_count']}")
-        print(f"   - Capas Densas (FC):       {metrics_summary['fc_layers_count']}")
-        print(f"   - Conexiones Residuales:   {metrics_summary['skip_connections_count']}")
+            print(f"   - Test Accuracy (Test 10k):{metrics_summary['final_test_accuracy']:.2f}%", flush=True)
+        print(f"   - Fitness:                 {metrics_summary['best_fitness']:.4f}", flush=True)
+        print(f"   - Parámetros Totales:      {metrics_summary['best_total_params']:,}", flush=True)
+        print(f"   - Parámetros Entrenables:  {metrics_summary['best_trainable_params']:,}", flush=True)
+        print(f"   - FLOPs Estimados:         {metrics_summary['best_estimated_flops']:,}", flush=True)
+        print(f"   - Tamaño en Memoria:       {metrics_summary['best_model_size_mb']:.3f} MB", flush=True)
+        print(f"   - Capas Convolucionales:   {metrics_summary['conv_layers_count']}", flush=True)
+        print(f"   - Capas Densas (FC):       {metrics_summary['fc_layers_count']}", flush=True)
+        print(f"   - Conexiones Residuales:   {metrics_summary['skip_connections_count']}", flush=True)
         
         if pruned_stats is not None:
             p_met = metrics_summary["pruning_metrics"]
-            print("-" * 55)
-            print(" ANÁLISIS DE PRECISIÓN DE PODA (PRUNING PRECISION):")
-            print(f"   - Modelos Podados:         {p_met['total_pruned_events']} ({p_met['pruning_rate_pct']}% de candidatos)")
-            print(f"   - Precisión de Poda:       {p_met['pruning_precision_pct']:.2f}% (Podas Correctas)")
-            print(f"   - Falsas Podas (Perdidos): {p_met['good_models_lost_pct']:.2f}%")
-            print(f"   - Fitness Prom. Podados:   {p_met['mean_pruned_fitness']:.4f}")
-            print(f"   - Accuracy Prom. Podados:  {p_met['mean_pruned_accuracy']:.2f}%")
+            print("-" * 55, flush=True)
+            print(" ANÁLISIS DE PRECISIÓN DE PODA (PRUNING PRECISION):", flush=True)
+            print(f"   - Modelos Podados:         {p_met['total_pruned_events']} ({p_met['pruning_rate_pct']}% de candidatos)", flush=True)
+            print(f"   - Precisión de Poda:       {p_met['pruning_precision_pct']:.2f}% (Podas Correctas)", flush=True)
+            print(f"   - Falsas Podas (Perdidos): {p_met['good_models_lost_pct']:.2f}%", flush=True)
+            print(f"   - Fitness Prom. Podados:   {p_met['mean_pruned_fitness']:.4f}", flush=True)
+            print(f"   - Accuracy Prom. Podados:  {p_met['mean_pruned_accuracy']:.2f}%", flush=True)
 
         if surrogate_stats is not None:
-            print("-" * 55)
-            print(" MÉTRICAS DEL META-MODELO SUBROGADO (V6):")
-            print(f"   - Candidatos en CPU:       {surrogate_stats['total_cpu_screened']}")
-            print(f"   - Evaluaciones en GPU:     {surrogate_stats['total_gpu_evaluations']}")
-            print(f"   - Factor de Exploración:   {surrogate_stats['exploration_multiplier']}x más búsqueda con 0 coste GPU")
-            print(f"   - Error MAE Predicción:    {surrogate_stats['mean_absolute_error_fit']:.4f}")
-            print(f"   - Muestras del Subrogado:  {surrogate_stats['surrogate_training_samples']}")
+            print("-" * 55, flush=True)
+            print(f" MÉTRICAS DE BÚSQUEDA ASISTIDA ({metrics_summary['variant']}):", flush=True)
+            print(f"   - Candidatos en CPU:       {surrogate_stats['total_cpu_screened']}", flush=True)
+            print(f"   - Evaluaciones en GPU:     {surrogate_stats['total_gpu_evaluations']}", flush=True)
+            print(f"   - Factor de Exploración:   {surrogate_stats['exploration_multiplier']}x más búsqueda con 0 coste GPU", flush=True)
+            print(f"   - Error MAE Predicción:    {surrogate_stats['mean_absolute_error_fit']:.4f}", flush=True)
+            print(f"   - Muestras del Subrogado:  {surrogate_stats['surrogate_training_samples']}", flush=True)
+            if 'pheromone_motifs' in surrogate_stats:
+                pm = surrogate_stats['pheromone_motifs']
+                print(f"   - Feromonas Favorecen:     Conv={pm.get('favored_conv_count')}, FC={pm.get('favored_fc_count')}, Skips={len(pm.get('reinforced_skip_connections', []))}", flush=True)
 
-        print("=" * 55)
+        print("=" * 55, flush=True)
 
         return metrics_summary
+
+    def save_report_txt(self, metrics_summary: dict, chck_dir: str = "./checkpoints/", filename: str = None) -> str:
+        """Guarda un reporte de texto exhaustivo con los resultados del experimento."""
+        return save_experiment_report_txt(metrics_summary, chck_dir=chck_dir, custom_filename=filename)
 
     def load_model(self, model_path: str, device: torch.device = None):
         """Carga y reconstruye un modelo guardado a partir de su ruta .pth o .pkl."""
