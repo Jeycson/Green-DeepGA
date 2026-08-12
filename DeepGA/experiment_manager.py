@@ -16,7 +16,7 @@ import pandas as pd
 # Importación directa de la función original
 from variants import (
     deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4,
-    green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9, green_DeepGA_v10,
+    green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9, green_DeepGA_v10, green_DeepGA_v11,
     final_evaluation
 )
 from Decoding import decoding, CNN
@@ -257,17 +257,37 @@ def save_experiment_report_txt(metrics_summary: dict, chck_dir: str = "./checkpo
         if hasattr(genome, 'second_level') and genome.second_level:
             lines.append(f"Conexiones Residuales (Bits de Skip): {genome.second_level}")
 
-    # Métricas de búsqueda asistida (subrogado y feromonas V6 / V8 / V9 / V10)
+    # Métricas de búsqueda asistida (subrogado, feromonas y modelo de islas V6 / V8 / V9 / V10 / V11)
     surr = metrics_summary.get("surrogate_metrics")
     if surr:
         lines.append("-" * 75)
-        lines.append("4. MÉTRICAS DE BÚSQUEDA ASISTIDA (META-MODELO SUBROGADO & ACO FEROMONAS)")
+        lines.append(f"4. MÉTRICAS DE BÚSQUEDA ASISTIDA ({variant.upper()})")
         lines.append("-" * 75)
         lines.append(f"Candidatos Explorados en CPU:  {surr.get('total_cpu_screened', 0)}")
         lines.append(f"Evaluaciones en GPU:           {surr.get('total_gpu_evaluations', 0)}")
         lines.append(f"Factor de Exploración:         {surr.get('exploration_multiplier', 0)}x más arquitecturas con 0 coste GPU")
         lines.append(f"Error MAE Predicción Fitness:  {surr.get('mean_absolute_error_fit', 0):.4f}")
         lines.append(f"Muestras del Subrogado:        {surr.get('surrogate_training_samples', 0)}")
+
+        # Métricas de Islas (V11)
+        if "n_islands" in surr:
+            lines.append(f"\nConfiguración del Modelo de Islas (Island Model V11):")
+            lines.append(f"  - Número de Islas:           {surr.get('n_islands')}")
+            lines.append(f"  - Población por Isla:        {surr.get('pop_per_island')} individuos (Total Población: {surr.get('total_population')})")
+            lines.append(f"  - Frecuencia de Migración:   Cada {surr.get('migration_interval')} generaciones")
+            lines.append(f"  - Tasa de Migración:         {surr.get('migration_size')} individuos por isla (Topología Anillo)")
+            lines.append(f"  - Migraciones Realizadas:    {surr.get('total_migrations_performed')}")
+            lines.append(f"  - Diversidad Inter-Islas:    {surr.get('final_inter_island_diversity', 0.0):.4f}")
+            lines.append(f"  - Aislamiento de Feromonas:  ESTRICTO (Sin contaminación cruzada entre matrices)")
+
+            islands_sum = surr.get("islands_summary", [])
+            if islands_sum:
+                lines.append("\nResumen por Cada Isla y Nichos de Feromonas:")
+                for isl in islands_sum:
+                    lines.append(f"  [Isla {isl['island_id']}] Mejor Fit: {isl['best_fitness']:.4f} | Acc: {isl['best_accuracy']:.2f}% | Params: {isl['best_params']:,} | Conv={isl['conv_layers']}, FC={isl['fc_layers']} | Div Intra-Isla: {isl['intra_island_diversity']:.4f}")
+                    pm = isl.get("pheromone_motifs", {})
+                    if pm:
+                        lines.append(f"    ↳ Feromonas Favorecen: Conv={pm.get('favored_conv_count')}, FC={pm.get('favored_fc_count')}, Skips Activos={len(pm.get('reinforced_skip_connections', []))}")
 
         p_motifs = surr.get("pheromone_motifs")
         if p_motifs:
@@ -325,10 +345,10 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
-        variant: str = "v10",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", o "v10"
+        variant: str = "v11",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", o "v11"
         memoryC: bool = True,
         train_epochs: int = 5,
-        population_size: int = 10,  # N
+        population_size: int = 12, # N (distribuido entre islas si es V11)
         generations: int = 5,       # T
         lr: float = 1e-4,
         cr: float = 0.7,
@@ -351,6 +371,9 @@ class ExperimentManager:
         rho: float = 0.10,
         alpha: float = 1.2,
         top_k_ratio: float = 0.35,
+        n_islands: int = 3,
+        migration_interval: int = 10,
+        migration_size: int = 2,
         data_root: str = "./data",
         chck_dir: str = "./checkpoints/",
         device: torch.device = None,
@@ -361,13 +384,16 @@ class ExperimentManager:
         auto_download: bool = False
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1 .. v10) sobre CIFAR-10
-        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9/V10),
-        mutación adaptativa (en V9/V10) y rastro de feromonas ACO (en V10).
+        Ejecuta la variante seleccionada de DeepGA (v1 .. v11) sobre CIFAR-10
+        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9/V10/V11),
+        mutación adaptativa (en V9/V10/V11), rastro de feromonas ACO (en V10/V11) y modelo de islas aisladas (en V11).
         
         Nuevos parámetros:
+        - n_islands (int): Número de islas evolutivas independientes (en V11, por defecto 3).
+        - migration_interval (int): Cada cuántas generaciones migran individuos (en V11, por defecto cada 10).
+        - migration_size (int): Cantidad de individuos élite que migran por isla (en V11, por defecto 2).
+        - rho, alpha, top_k_ratio: Parámetros del sistema de feromonas ACO (en V10/V11).
         - save_txt_report (bool): Guarda un reporte exhaustivo en formato .txt con todos los resultados y métricas.
-        - rho, alpha, top_k_ratio: Parámetros del sistema de feromonas ACO (en V10).
         - save_best_model_file (bool): Guarda automáticamente el modelo ganador en formato .pth y .pkl.
         - train_final_model (bool): Si es True, entrena completamente el modelo ganador por `final_train_epochs`.
         - final_train_epochs (int): Número de épocas para el entrenamiento final del modelo ganador.
@@ -437,7 +463,21 @@ class ExperimentManager:
         pruned_stats = None
         surrogate_stats = None
 
-        if variant.lower() == "v10":
+        if variant.lower() == "v11":
+            results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v11(
+                **common_args,
+                n_islands=n_islands,
+                migration_interval=migration_interval,
+                migration_size=migration_size,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa,
+                mr_min=mr_min,
+                mr_max=mr_max,
+                rho=rho,
+                alpha=alpha,
+                top_k_ratio=top_k_ratio
+            )
+        elif variant.lower() == "v10":
             results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v10(
                 **common_args,
                 pool_candidates_factor=pool_candidates_factor,
@@ -673,6 +713,8 @@ class ExperimentManager:
             print(f"   - Factor de Exploración:   {surrogate_stats['exploration_multiplier']}x más búsqueda con 0 coste GPU", flush=True)
             print(f"   - Error MAE Predicción:    {surrogate_stats['mean_absolute_error_fit']:.4f}", flush=True)
             print(f"   - Muestras del Subrogado:  {surrogate_stats['surrogate_training_samples']}", flush=True)
+            if 'n_islands' in surrogate_stats:
+                print(f"   - Modelo de Islas (V11):   {surrogate_stats['n_islands']} Islas | {surrogate_stats['total_migrations_performed']} Migraciones realizadas | Div Inter-Islas: {surrogate_stats.get('final_inter_island_diversity', 0.0):.4f}", flush=True)
             if 'pheromone_motifs' in surrogate_stats:
                 pm = surrogate_stats['pheromone_motifs']
                 print(f"   - Feromonas Favorecen:     Conv={pm.get('favored_conv_count')}, FC={pm.get('favored_fc_count')}, Skips={len(pm.get('reinforced_skip_connections', []))}", flush=True)

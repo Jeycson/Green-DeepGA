@@ -26,12 +26,12 @@ CLASS_NAMES = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', '
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ejecución local de DeepGA con ExperimentManager")
-    parser.add_argument("--variant", type=str, default="v10", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10"],
-                        help="Variante de DeepGA a ejecutar (por defecto: v10)")
+    parser.add_argument("--variant", type=str, default="v11", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11"],
+                        help="Variante de DeepGA a ejecutar (por defecto: v11)")
     parser.add_argument("--execution", type=int, default=1,
                         help="Número identificador de la ejecución (por defecto: 1)")
-    parser.add_argument("--pop-size", type=int, default=10,
-                        help="Tamaño de la población N (por defecto: 10)")
+    parser.add_argument("--pop-size", type=int, default=12,
+                        help="Tamaño de la población N total (por defecto: 12)")
     parser.add_argument("--generations", type=int, default=5,
                         help="Número de generaciones T (por defecto: 5)")
     parser.add_argument("--train-epochs", type=int, default=2,
@@ -44,6 +44,12 @@ def parse_args():
                         help="Tasa de aprendizaje (por defecto: 1e-4)")
     parser.add_argument("--w", type=float, default=0.3,
                         help="Peso de penalización por parámetros (por defecto: 0.3)")
+    parser.add_argument("--n-islands", type=int, default=3,
+                        help="Número de islas evolutivas independientes para V11 (por defecto: 3)")
+    parser.add_argument("--migration-interval", type=int, default=10,
+                        help="Intervalo de generaciones para migración en V11 (por defecto: 10)")
+    parser.add_argument("--migration-size", type=int, default=2,
+                        help="Número de individuos que migran por isla en V11 (por defecto: 2)")
     parser.add_argument("--data-root", type=str, default="./data",
                         help="Ruta local donde se almacena o descargará CIFAR-10 (por defecto: ./data)")
     parser.add_argument("--chck-dir", type=str, default="./checkpoints/",
@@ -88,6 +94,9 @@ def main():
         lr=args.lr,
         w=args.w,
         batch_size=args.batch_size,
+        n_islands=args.n_islands,
+        migration_interval=args.migration_interval,
+        migration_size=args.migration_size,
         data_root=args.data_root,
         chck_dir=args.chck_dir,
         preload_gpu=not args.no_preload_gpu,

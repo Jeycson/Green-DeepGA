@@ -20,16 +20,19 @@ manager = ExperimentManager(country_iso_code="MEX", track_carbon=True)
 # 2. Ejecutar la neuroevolución guardando y entrenando el mejor modelo
 #    (Nota: Pon auto_download=True si deseas que se descargue automáticamente en Colab)
 resultados = manager.run_deepga(
-    variant="v10",             # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9" o "v10"
+    variant="v11",             # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10" o "v11"
     execution=1,
-    population_size=10,        # N: Tamaño de población
-    generations=5,             # T: Número de generaciones
+    population_size=12,        # N: Tamaño de población total (distribuido entre islas)
+    generations=15,            # T: Número de generaciones
     train_epochs=2,            # Épocas durante el GA
+    n_islands=3,               # Número de islas evolutivas independientes
+    migration_interval=10,     # Cada 10 generaciones migran individuos entre islas
+    migration_size=2,          # Cantidad de individuos élite que migran por isla
     lr=1e-4,                   # Tasa de aprendizaje
     w=0.3,                     # Peso de penalización
     batch_size=64,
     chck_dir="./checkpoints/",
-    save_best_model_file=True, # Guarda automáticamente best_model_v9_exec_1.pth
+    save_best_model_file=True, # Guarda automáticamente best_model_v11_exec_1.pth
     train_final_model=True,    # Entrena el ganador para tener los pesos listos
     final_train_epochs=10,     # Épocas de entrenamiento final (ej. 10 a 30)
     auto_download=True        # Activa True en Colab para descargar directamente
