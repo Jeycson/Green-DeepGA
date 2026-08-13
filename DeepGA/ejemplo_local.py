@@ -51,7 +51,11 @@ def parse_args():
     parser.add_argument("--migration-size", type=int, default=2,
                         help="Número de individuos que migran por isla en V11 (por defecto: 2)")
     parser.add_argument("--data-root", type=str, default="./data",
-                        help="Ruta local donde se almacena o descargará CIFAR-10 (por defecto: ./data)")
+                        help="Ruta local donde se almacena CIFAR-10 o dataset personalizado (ej. ./dataset/covid)")
+    parser.add_argument("--img-size", type=int, default=64,
+                        help="Resolución de las imágenes (por defecto: 64)")
+    parser.add_argument("--in-channels", type=int, default=3, choices=[1, 3],
+                        help="Número de canales de entrada (3 para RGB, 1 para Grayscale)")
     parser.add_argument("--chck-dir", type=str, default="./checkpoints/",
                         help="Directorio donde se guardarán los modelos y gráficos (por defecto: ./checkpoints/)")
     parser.add_argument("--country-iso", type=str, default="MEX",
@@ -72,7 +76,8 @@ def main():
     print("      EJECUCIÓN LOCAL DE DEEPGA / EXPERIMENT MANAGER", flush=True)
     print("=" * 60, flush=True)
     print(f"📌 Dispositivo detectado:    {device}" + (f" ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else " (CPU)"), flush=True)
-    print(f"📌 Ruta del dataset CIFAR-10: {os.path.abspath(args.data_root)}", flush=True)
+    print(f"📌 Ruta del dataset:         {os.path.abspath(args.data_root)}", flush=True)
+    print(f"📌 Resolución / Canales:     {args.img_size}x{args.img_size} | {args.in_channels} canales", flush=True)
     print(f"📌 Directorio de checkpoints: {os.path.abspath(args.chck_dir)}", flush=True)
     print(f"📌 Variante seleccionada:     {args.variant.upper()}", flush=True)
     print("=" * 60 + "\n", flush=True)
@@ -84,7 +89,6 @@ def main():
     )
 
     # 2. Ejecutar la neuroevolución con entrenamiento y guardado del mejor modelo
-    #    (Si CIFAR-10 no existe en data_root, se descargará automáticamente la primera vez)
     resultados = manager.run_deepga(
         variant=args.variant,
         execution=args.execution,
@@ -98,6 +102,8 @@ def main():
         migration_interval=args.migration_interval,
         migration_size=args.migration_size,
         data_root=args.data_root,
+        img_size=args.img_size,
+        in_channels=args.in_channels,
         chck_dir=args.chck_dir,
         preload_gpu=not args.no_preload_gpu,
         save_best_model_file=True, # Guarda automáticamente best_model_{variant}_exec_{execution}.pth y .pkl
@@ -110,19 +116,19 @@ def main():
     # 3. Acceder al modelo guardado y reporte de texto
     ruta_modelo = resultados["saved_model_path"]
     ruta_txt = resultados.get("txt_report_path")
+    class_names = resultados.get("class_names", CLASS_NAMES)
     print(f"\n✅ Modelo ganador guardado en: {ruta_modelo}", flush=True)
     if ruta_txt:
         print(f"📄 Reporte de experimento (.txt): {os.path.abspath(ruta_txt)}", flush=True)
 
-    # 4. Generar Matriz de Confusión y Reporte sobre el Test Set independiente (10,000 imágenes)
-    #    (Estas 10,000 imágenes NUNCA fueron vistas durante la neuroevolución ni durante la validación)
-    print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente (10,000 imágenes)...", flush=True)
+    # 4. Generar Matriz de Confusión y Reporte sobre el Test Set independiente
+    print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente...", flush=True)
     save_fig_path = os.path.join(args.chck_dir, f"matriz_confusion_{args.variant.lower()}.png")
     cm, reporte = manager.generate_confusion_matrix(
         model_or_path=ruta_modelo,
-        dataloader=resultados["test_dataloader"],  # 10,000 imágenes oficiales de prueba
-        class_names=CLASS_NAMES,
-        title=f"Matriz de Confusión (Test Set 10k) - DeepGA {resultados['variant']}",
+        dataloader=resultados["test_dataloader"],
+        class_names=class_names,
+        title=f"Matriz de Confusión - DeepGA {resultados['variant']}",
         save_fig_path=save_fig_path,
         auto_download_plot=False
     )

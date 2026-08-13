@@ -40,17 +40,17 @@ resultados = manager.run_deepga(
 
 # 3. Acceder al modelo guardado
 ruta_modelo = resultados["saved_model_path"]
+class_names = resultados.get("class_names", CLASS_NAMES)
 print(f"\n✅ Modelo guardado en: {ruta_modelo}")
 
-# 4. Generar Matriz de Confusión y Reporte sobre el Test Set independiente (10,000 imágenes)
-#    (Estas 10,000 imágenes NUNCA fueron vistas durante la neuroevolución ni durante la validación)
-print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente (10,000 imágenes)...")
+# 4. Generar Matriz de Confusión y Reporte sobre el Test Set independiente
+print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente...")
 cm, reporte = manager.generate_confusion_matrix(
     model_or_path=ruta_modelo,
-    dataloader=resultados["test_dataloader"],  # 10,000 imágenes oficiales de prueba
-    class_names=CLASS_NAMES,
-    title=f"Matriz de Confusión (Test Set 10k) - DeepGA {resultados['variant']}",
-    save_fig_path="./checkpoints/matriz_confusion_v9.png",
+    dataloader=resultados["test_dataloader"],
+    class_names=class_names,
+    title=f"Matriz de Confusión - DeepGA {resultados['variant']}",
+    save_fig_path=f"./checkpoints/matriz_confusion_{resultados['variant'].lower()}.png",
     auto_download_plot=False
 )
 

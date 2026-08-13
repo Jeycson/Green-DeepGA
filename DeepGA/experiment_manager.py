@@ -29,6 +29,8 @@ from model_utils import (
     download_file,
     download_all_models_zip
 )
+from dataset_loader import load_dataset_auto, get_custom_imagefolder_loaders
+
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
 try:
@@ -375,6 +377,8 @@ class ExperimentManager:
         migration_interval: int = 10,
         migration_size: int = 2,
         data_root: str = "./data",
+        img_size: int = 64,
+        in_channels: int = 3,
         chck_dir: str = "./checkpoints/",
         device: torch.device = None,
         save_best_model_file: bool = True,
@@ -384,31 +388,28 @@ class ExperimentManager:
         auto_download: bool = False
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1 .. v11) sobre CIFAR-10
-        midiendo huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9/V10/V11),
+        Ejecuta la variante seleccionada de DeepGA (v1 .. v11) sobre CIFAR-10 o cualquier dataset personalizado
+        organizado en carpetas (ej. dataset/covid/{covid, neumonia, normal} o dataset/tumores/{...}).
+        Mide huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9/V10/V11),
         mutación adaptativa (en V9/V10/V11), rastro de feromonas ACO (en V10/V11) y modelo de islas aisladas (en V11).
         
-        Nuevos parámetros:
-        - n_islands (int): Número de islas evolutivas independientes (en V11, por defecto 3).
-        - migration_interval (int): Cada cuántas generaciones migran individuos (en V11, por defecto cada 10).
-        - migration_size (int): Cantidad de individuos élite que migran por isla (en V11, por defecto 2).
-        - rho, alpha, top_k_ratio: Parámetros del sistema de feromonas ACO (en V10/V11).
-        - save_txt_report (bool): Guarda un reporte exhaustivo en formato .txt con todos los resultados y métricas.
-        - save_best_model_file (bool): Guarda automáticamente el modelo ganador en formato .pth y .pkl.
-        - train_final_model (bool): Si es True, entrena completamente el modelo ganador por `final_train_epochs`.
-        - final_train_epochs (int): Número de épocas para el entrenamiento final del modelo ganador.
-        - auto_download (bool): Descarga automáticamente el modelo .pth en Google Colab.
+        Parámetros de Dataset:
+        - data_root (str): Ruta al dataset (ej. "./data" para CIFAR-10 o "./dataset/covid" para dataset personalizado).
+        - img_size (int): Resolución de imagen (por defecto: 64 para datasets personalizados o 32 para CIFAR-10).
+        - in_channels (int): Canales de entrada (3 para RGB, 1 para escala de grises).
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # 1. Cargar CIFAR-10
-        print(f"Cargando dataset CIFAR-10 (batch_size={batch_size}) en dispositivo: {device}...", flush=True)
-        train_dl, val_dl, test_dl, in_channels, out_size, n_classes = get_cifar10_loaders(
-            batch_size=batch_size,
+        # 1. Cargar Dataset (CIFAR-10 o Dataset Personalizado con partición estratificada)
+        train_dl, val_dl, test_dl, in_channels, out_size, n_classes, class_names = load_dataset_auto(
             data_root=data_root,
+            img_size=img_size,
+            in_channels=in_channels,
+            batch_size=batch_size,
             preload_gpu=preload_gpu,
-            device=device
+            device=device,
+            num_workers=num_workers
         )
         loss_func = nn.NLLLoss()
 
@@ -638,6 +639,7 @@ class ExperimentManager:
             "final_trained_model": trained_final_model,
             "val_dataloader": val_dl,
             "test_dataloader": test_dl,
+            "class_names": class_names,
             "txt_report_path": None
         }
 
