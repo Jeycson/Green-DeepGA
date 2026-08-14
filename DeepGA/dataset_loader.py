@@ -222,6 +222,173 @@ def get_custom_imagefolder_loaders(
     return train_dl, val_dl, test_dl, in_channels, img_size, n_classes, class_names
 
 
+def get_presplit_imagefolder_loaders(
+    data_dir: str,
+    train_subdir: str = "train",
+    test_subdir: str = "test",
+    img_size: int = 64,
+    in_channels: int = 1,
+    batch_size: int = 32,
+    val_ratio: float = 0.15,
+    num_workers: int = 2,
+    preload_gpu: bool = False,
+    device: torch.device = None,
+    random_state: int = 42
+):
+    """
+    Carga un dataset que YA viene pre-dividido en dos carpetas (train/ y test/),
+    cada una con las mismas subcarpetas de clases dentro.
+
+    Ejemplo de estructura esperada:
+    dataset/
+    ├── train/
+    │   ├── clase1/
+    │   ├── clase2/
+    │   └── clase3/
+    └── test/
+        ├── clase1/
+        ├── clase2/
+        └── clase3/
+
+    Como el dataset no trae partición de validación, esta función separa
+    val_ratio de forma ESTRATIFICADA a partir de train/, y usa test/ tal cual.
+
+    Retorna:
+    - train_dl, val_dl, test_dl, in_channels, out_size, n_classes, class_names
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    train_dir = os.path.join(data_dir, train_subdir)
+    test_dir = os.path.join(data_dir, test_subdir)
+
+    if not os.path.exists(train_dir):
+        raise FileNotFoundError(f"No se encontró la carpeta de entrenamiento: '{train_dir}'")
+    if not os.path.exists(test_dir):
+        raise FileNotFoundError(f"No se encontró la carpeta de prueba: '{test_dir}'")
+
+    # 1. Definir transformaciones por canal (idénticas a la versión original)
+    if in_channels == 1:
+        train_transforms = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+        eval_transforms = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+    else:
+        train_transforms = transforms.Compose([
+            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        eval_transforms = transforms.Compose([
+            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+
+    # 2. Cargar estructura de clases de train y test por separado
+    raw_train = datasets.ImageFolder(root=train_dir)
+    raw_test = datasets.ImageFolder(root=test_dir)
+
+    if raw_train.classes != raw_test.classes:
+        raise ValueError(
+            f"Las clases de train y test no coinciden.\n"
+            f"  train: {raw_train.classes}\n"
+            f"  test:  {raw_test.classes}\n"
+            f"Asegúrate de que ambas carpetas tengan las mismas subcarpetas de clase (mismos nombres, mismo orden)."
+        )
+
+    class_names = raw_train.classes
+    n_classes = len(class_names)
+    train_targets = np.array(raw_train.targets)
+    num_train_total = len(train_targets)
+
+    if num_train_total == 0:
+        raise ValueError(f"No se encontraron imágenes en '{train_dir}'.")
+    if len(raw_test) == 0:
+        raise ValueError(f"No se encontraron imágenes en '{test_dir}'.")
+
+    # 3. Partición estratificada de train/ -> train_final + val
+    indices = np.arange(num_train_total)
+    if SKLEARN_AVAILABLE and len(np.unique(train_targets)) > 1:
+        train_idx, val_idx = train_test_split(
+            indices,
+            test_size=val_ratio,
+            stratify=train_targets,
+            random_state=random_state
+        )
+    else:
+        np.random.seed(random_state)
+        train_idx, val_idx = [], []
+        for c in range(n_classes):
+            c_indices = indices[train_targets == c]
+            np.random.shuffle(c_indices)
+            n_c = len(c_indices)
+            n_val = int(n_c * val_ratio)
+            val_idx.extend(c_indices[:n_val])
+            train_idx.extend(c_indices[n_val:])
+        train_idx = np.array(train_idx)
+        val_idx = np.array(val_idx)
+
+    # 4. Crear datasets con sus respectivas transformaciones
+    train_dataset = datasets.ImageFolder(root=train_dir, transform=train_transforms)
+    eval_dataset = datasets.ImageFolder(root=train_dir, transform=eval_transforms)
+    test_dataset = datasets.ImageFolder(root=test_dir, transform=eval_transforms)
+
+    train_ds = Subset(train_dataset, train_idx)
+    val_ds = Subset(eval_dataset, val_idx)
+    test_ds = test_dataset  # ya viene completo y separado
+
+    print(f"\n📂 [Pre-split Dataset] Train: '{os.path.abspath(train_dir)}' | Test: '{os.path.abspath(test_dir)}'", flush=True)
+    print(f"   🏷️  Clases detectadas ({n_classes}): {class_names}", flush=True)
+    print(f"   📐 Dimensiones: {img_size}x{img_size} | Canales: {in_channels}", flush=True)
+    print(f"   📊 Distribución -> Train: {len(train_ds):,} | Val: {len(val_ds):,} | Test: {len(test_ds):,} imágenes", flush=True)
+
+    test_targets = np.array(test_dataset.targets)
+    for c_idx, c_name in enumerate(class_names):
+        c_train = sum(1 for i in train_idx if train_targets[i] == c_idx)
+        c_val = sum(1 for i in val_idx if train_targets[i] == c_idx)
+        c_test = int((test_targets == c_idx).sum())
+        print(f"      - {c_name:<15}: Train={c_train:<4} | Val={c_val:<4} | Test={c_test:<4} (Total: {c_train+c_val+c_test})", flush=True)
+
+    # 5. Precarga en VRAM o DataLoaders estándar
+    if preload_gpu and device.type == "cuda":
+        print(f"   🚀 Precargando dataset completo en VRAM de la GPU ({device})...", flush=True)
+        loader_train_all = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
+        loader_val_all = DataLoader(val_ds, batch_size=len(val_ds), shuffle=False)
+        loader_test_all = DataLoader(test_ds, batch_size=len(test_ds), shuffle=False)
+
+        x_train, y_train = next(iter(loader_train_all))
+        x_val, y_val = next(iter(loader_val_all))
+        x_test, y_test = next(iter(loader_test_all))
+
+        train_dl = FastGPULoader(x_train.to(device, dtype=torch.float32), y_train.to(device, dtype=torch.long), batch_size=batch_size, shuffle=True)
+        val_dl = FastGPULoader(x_val.to(device, dtype=torch.float32), y_val.to(device, dtype=torch.long), batch_size=batch_size, shuffle=False)
+        test_dl = FastGPULoader(x_test.to(device, dtype=torch.float32), y_test.to(device, dtype=torch.long), batch_size=batch_size, shuffle=False)
+        print(f"   ✓ Dataset ({len(train_ds)+len(val_ds)+len(test_ds)} imágenes) precargado en GPU VRAM.", flush=True)
+    else:
+        use_pin = torch.cuda.is_available() and (device.type == "cuda")
+        train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin)
+        val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin)
+        test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin)
+
+    return train_dl, val_dl, test_dl, in_channels, img_size, n_classes, class_names
+
+
 def load_dataset_auto(
     data_root: str = "./data",
     img_size: int = 64,
@@ -242,12 +409,29 @@ def load_dataset_auto(
 
     # Verificar si es una carpeta con subdirectorios de clases
     is_custom_folder = False
+    is_presplit_folder = False
     if os.path.exists(data_root) and os.path.isdir(data_root):
         subdirs = [d for d in os.listdir(data_root) if os.path.isdir(os.path.join(data_root, d)) and not d.startswith(".")]
-        if len(subdirs) >= 2:
+        # Caso: dataset ya dividido en train/ y test/ (o train/ y val/)
+        if "train" in subdirs and ("test" in subdirs or "val" in subdirs):
+            is_presplit_folder = True
+        elif len(subdirs) >= 2:
             is_custom_folder = True
 
-    if is_custom_folder:
+    if is_presplit_folder:
+        test_name = "test" if "test" in os.listdir(data_root) else "val"
+        return get_presplit_imagefolder_loaders(
+            data_dir=data_root,
+            train_subdir="train",
+            test_subdir=test_name,
+            img_size=img_size,
+            in_channels=in_channels,
+            batch_size=batch_size,
+            preload_gpu=preload_gpu,
+            device=device,
+            num_workers=num_workers
+        )
+    elif is_custom_folder:
         return get_custom_imagefolder_loaders(
             data_dir=data_root,
             img_size=img_size,
