@@ -30,7 +30,7 @@ from model_utils import (
     download_file,
     download_all_models_zip
 )
-from dataset_loader import load_dataset_auto, get_custom_imagefolder_loaders
+from dataset_loader import load_dataset_auto, get_custom_imagefolder_loaders, load_dataset_2split
 
 
 
@@ -428,32 +428,57 @@ class ExperimentManager:
         save_txt_report: bool = True,
         train_final_model: bool = False,
         final_train_epochs: int = 30,
-        auto_download: bool = False
+        auto_download: bool = False,
+        use_2split: bool = False,
+        val_ratio: float = 0.15,
+        custom_train_dl: DataLoader = None,
+        custom_val_dl: DataLoader = None,
+        custom_class_names: list = None
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1 .. v11) sobre CIFAR-10 o cualquier dataset personalizado
-        organizado en carpetas (ej. dataset/covid/{covid, neumonia, normal} o dataset/tumores/{...}).
-        Mide huella de carbono, tiempos, métricas de la CNN, precisión de poda (en V5), subrogado (en V6/V8/V9/V10/V11),
-        mutación adaptativa (en V9/V10/V11), rastro de feromonas ACO (en V10/V11) y modelo de islas aisladas (en V11).
+        Ejecuta la variante seleccionada de DeepGA (v1 .. v11, mo_v9 .. mo_v11) sobre CIFAR-10 o cualquier dataset personalizado.
         
         Parámetros de Dataset:
-        - data_root (str): Ruta al dataset (ej. "./data" para CIFAR-10 o "./dataset/covid" para dataset personalizado).
-        - img_size (int): Resolución de imagen (por defecto: 64 para datasets personalizados o 32 para CIFAR-10).
+        - data_root (str): Ruta al dataset (ej. "./data" o "./dataset/covid").
+        - img_size (int): Resolución de imagen (por defecto: 64 o 32).
         - in_channels (int): Canales de entrada (3 para RGB, 1 para escala de grises).
+        - use_2split (bool): Si True, divide el dataset estrictamente en 2 particiones (Train y Val),
+                             maximizando el número de imágenes asignadas al entrenamiento sin reservar test set.
+        - val_ratio (float): Fracción del dataset para validación en modo 2-split (por defecto 0.15 -> 85% Train / 15% Val).
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # 1. Cargar Dataset (CIFAR-10 o Dataset Personalizado con partición estratificada)
-        train_dl, val_dl, test_dl, in_channels, out_size, n_classes, class_names = load_dataset_auto(
-            data_root=data_root,
-            img_size=img_size,
-            in_channels=in_channels,
-            batch_size=batch_size,
-            preload_gpu=preload_gpu,
-            device=device,
-            num_workers=num_workers
-        )
+        # 1. Cargar Dataset (Personalizado, 2-Split o Auto 3-Split)
+        if custom_train_dl is not None and custom_val_dl is not None:
+            train_dl = custom_train_dl
+            val_dl = custom_val_dl
+            test_dl = None
+            out_size = img_size
+            class_names = custom_class_names if custom_class_names is not None else [f"clase_{i}" for i in range(10)]
+            n_classes = len(class_names)
+        elif use_2split:
+            train_dl, val_dl, in_channels, out_size, n_classes, class_names = load_dataset_2split(
+                data_root=data_root,
+                img_size=img_size,
+                in_channels=in_channels,
+                batch_size=batch_size,
+                val_ratio=val_ratio,
+                preload_gpu=preload_gpu,
+                device=device,
+                num_workers=num_workers
+            )
+            test_dl = None
+        else:
+            train_dl, val_dl, test_dl, in_channels, out_size, n_classes, class_names = load_dataset_auto(
+                data_root=data_root,
+                img_size=img_size,
+                in_channels=in_channels,
+                batch_size=batch_size,
+                preload_gpu=preload_gpu,
+                device=device,
+                num_workers=num_workers
+            )
         loss_func = nn.NLLLoss()
 
         # 2. Iniciar Medición de Carbono y Tiempo
@@ -648,9 +673,8 @@ class ExperimentManager:
             print(f"   (Validación durante re-entrenamiento sobre el conjunto de test independiente: 10,000 imágenes)")
             trained_final_model = final_evaluation(
                 execution=execution,
-                bestind=bestind,
                 train_dl=train_dl,
-                val_dl=test_dl,  # Evaluación sobre el conjunto de prueba independiente oficial (10,000 imágenes)
+                val_dl=test_dl if test_dl is not None else val_dl,  # Validación sobre test (si existe) o val_dl
                 lr=lr,
                 max_params=max_params,
                 w=w,
@@ -665,8 +689,8 @@ class ExperimentManager:
                 auto_download=auto_download
             )
 
-        # Si el modelo final está entrenado, calcular precisión en test set independiente
-        if trained_final_model is not None:
+        # Si el modelo final está entrenado y existe conjunto de test, calcular precisión en test
+        if trained_final_model is not None and test_dl is not None:
             try:
                 final_test_acc = util_evaluate_model(trained_final_model, test_dl, device=device)
             except Exception:

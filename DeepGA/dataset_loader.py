@@ -486,3 +486,266 @@ def load_dataset_auto(
             test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
         return train_dl, val_dl, test_dl, 3, 32, 10, cifar_classes
+
+
+def get_custom_imagefolder_2split_loaders(
+    data_dir: str,
+    img_size: int = 64,
+    in_channels: int = 1,
+    batch_size: int = 32,
+    val_ratio: float = 0.15,
+    num_workers: int = 2,
+    preload_gpu: bool = False,
+    device: torch.device = None,
+    random_state: int = 42
+):
+    """
+    Carga un dataset en subcarpetas y lo divide ESTRICTAMENTE en 2 conjuntos:
+    - Entrenamiento (1 - val_ratio, ej. 85%): Con Data Augmentation.
+    - Validación (val_ratio, ej. 15%): Para evaluar fitness/accuracy durante la neuroevolución.
+    
+    Permite maximizar el número de imágenes de entrenamiento disponibles sin reservar un conjunto de test.
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if not os.path.exists(data_dir):
+        raise FileNotFoundError(f"Directorio de dataset no encontrado: '{data_dir}'")
+
+    if in_channels == 1:
+        train_transforms = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+        eval_transforms = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+    else:
+        train_transforms = transforms.Compose([
+            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        eval_transforms = transforms.Compose([
+            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+
+    raw_dataset = datasets.ImageFolder(root=data_dir)
+    class_names = raw_dataset.classes
+    n_classes = len(class_names)
+    targets = np.array(raw_dataset.targets)
+    num_total = len(targets)
+
+    if num_total == 0:
+        raise ValueError(f"No se encontraron imágenes en '{data_dir}'.")
+
+    # Partición estratificada en 2 (Train y Val)
+    indices = np.arange(num_total)
+    if SKLEARN_AVAILABLE and len(np.unique(targets)) > 1:
+        train_idx, val_idx = train_test_split(
+            indices, test_size=val_ratio, stratify=targets, random_state=random_state
+        )
+    else:
+        np.random.seed(random_state)
+        train_idx, val_idx = [], []
+        for c in range(n_classes):
+            c_indices = indices[targets == c]
+            np.random.shuffle(c_indices)
+            n_c = len(c_indices)
+            n_val = max(1, int(n_c * val_ratio))
+            val_idx.extend(c_indices[:n_val])
+            train_idx.extend(c_indices[n_val:])
+        train_idx = np.array(train_idx)
+        val_idx = np.array(val_idx)
+
+    train_base = datasets.ImageFolder(root=data_dir, transform=train_transforms)
+    eval_base = datasets.ImageFolder(root=data_dir, transform=eval_transforms)
+
+    train_ds = Subset(train_base, train_idx)
+    val_ds = Subset(eval_base, val_idx)
+
+    train_pct = round((len(train_ds) / num_total) * 100, 1)
+    val_pct = round((len(val_ds) / num_total) * 100, 1)
+
+    print(f"\n📂 [Partición 2-Split: Train + Val] Directorio: '{os.path.abspath(data_dir)}'", flush=True)
+    print(f"   🏷️  Clases detectadas ({n_classes}): {class_names}", flush=True)
+    print(f"   📐 Dimensiones: {img_size}x{img_size} | Canales: {in_channels}", flush=True)
+    print(f"   📊 Distribución -> Train: {len(train_ds):,} ({train_pct}%) | Val: {len(val_ds):,} ({val_pct}%) | Total: {num_total:,} imágenes", flush=True)
+
+    for c_idx, c_name in enumerate(class_names):
+        c_train = sum(1 for i in train_idx if targets[i] == c_idx)
+        c_val = sum(1 for i in val_idx if targets[i] == c_idx)
+        print(f"      - {c_name:<15}: Train={c_train:<4} | Val={c_val:<4} (Total: {c_train+c_val})", flush=True)
+
+    if preload_gpu and device.type == "cuda":
+        print(f"   🚀 Precargando dataset 2-Split en VRAM de la GPU ({device})...", flush=True)
+        loader_train_all = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
+        loader_val_all = DataLoader(val_ds, batch_size=len(val_ds), shuffle=False)
+
+        x_train, y_train = next(iter(loader_train_all))
+        x_val, y_val = next(iter(loader_val_all))
+
+        train_dl = FastGPULoader(x_train.to(device, dtype=torch.float32), y_train.to(device, dtype=torch.long), batch_size=batch_size, shuffle=True)
+        val_dl = FastGPULoader(x_val.to(device, dtype=torch.float32), y_val.to(device, dtype=torch.long), batch_size=batch_size, shuffle=False)
+        print(f"   ✓ Dataset ({num_total} imágenes) precargado en GPU VRAM.", flush=True)
+    else:
+        use_pin = torch.cuda.is_available() and (device.type == "cuda")
+        train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin)
+        val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin)
+
+    return train_dl, val_dl, in_channels, img_size, n_classes, class_names
+
+
+def load_dataset_2split(
+    data_root: str = "./data",
+    img_size: int = 64,
+    in_channels: int = 3,
+    batch_size: int = 32,
+    val_ratio: float = 0.15,
+    preload_gpu: bool = True,
+    device: torch.device = None,
+    num_workers: int = 2
+):
+    """
+    Carga cualquier dataset dividiéndolo ESTRICTAMENTE en 2 conjuntos (Entrenamiento y Validación):
+    - Si data_root contiene subcarpetas con imágenes, usa get_custom_imagefolder_2split_loaders.
+    - Si es CIFAR-10, utiliza los 50,000 de entrenamiento como Train y los 10,000 oficiales como Val
+      (o partición con val_ratio), otorgando el máximo volumen posible para entrenamiento.
+    
+    Retorna:
+    - train_dl, val_dl, in_channels, out_size, n_classes, class_names
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    is_custom_folder = False
+    is_presplit_folder = False
+    if os.path.exists(data_root) and os.path.isdir(data_root):
+        subdirs = [d for d in os.listdir(data_root) if os.path.isdir(os.path.join(data_root, d)) and not d.startswith(".")]
+        if "train" in subdirs and ("test" in subdirs or "val" in subdirs):
+            is_presplit_folder = True
+        elif len(subdirs) >= 2:
+            is_custom_folder = True
+
+    if is_presplit_folder:
+        val_dir_name = "val" if "val" in os.listdir(data_root) else "test"
+        train_dir = os.path.join(data_root, "train")
+        val_dir = os.path.join(data_root, val_dir_name)
+
+        if in_channels == 1:
+            train_tf = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.Resize((img_size, img_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=10),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.5])
+            ])
+            val_tf = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.Resize((img_size, img_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.5])
+            ])
+        else:
+            train_tf = transforms.Compose([
+                transforms.Lambda(lambda img: img.convert('RGB')),
+                transforms.Resize((img_size, img_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=10),
+                transforms.ColorJitter(brightness=0.1, contrast=0.1),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+            val_tf = transforms.Compose([
+                transforms.Lambda(lambda img: img.convert('RGB')),
+                transforms.Resize((img_size, img_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+
+        train_ds = datasets.ImageFolder(root=train_dir, transform=train_tf)
+        val_ds = datasets.ImageFolder(root=val_dir, transform=val_tf)
+        class_names = train_ds.classes
+        n_classes = len(class_names)
+
+        print(f"\n📂 [Pre-Split 2-Way] Train: '{train_dir}' ({len(train_ds):,} imgs) | Val: '{val_dir}' ({len(val_ds):,} imgs)", flush=True)
+
+        if preload_gpu and device.type == "cuda":
+            l_tr = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
+            l_val = DataLoader(val_ds, batch_size=len(val_ds), shuffle=False)
+            x_tr, y_tr = next(iter(l_tr))
+            x_val, y_val = next(iter(l_val))
+            train_dl = FastGPULoader(x_tr.to(device, dtype=torch.float32), y_tr.to(device, dtype=torch.long), batch_size=batch_size, shuffle=True)
+            val_dl = FastGPULoader(x_val.to(device, dtype=torch.float32), y_val.to(device, dtype=torch.long), batch_size=batch_size, shuffle=False)
+        else:
+            use_pin = torch.cuda.is_available() and (device.type == "cuda")
+            train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin)
+            val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin)
+
+        return train_dl, val_dl, in_channels, img_size, n_classes, class_names
+
+    elif is_custom_folder:
+        return get_custom_imagefolder_2split_loaders(
+            data_dir=data_root,
+            img_size=img_size,
+            in_channels=in_channels,
+            batch_size=batch_size,
+            val_ratio=val_ratio,
+            preload_gpu=preload_gpu,
+            device=device,
+            num_workers=num_workers
+        )
+    else:
+        # CIFAR-10 con asignación completa de 50,000 para Train y 10,000 para Val
+        cifar_classes = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', 'caballo', 'barco', 'camión']
+        transform_train = transforms.Compose([
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomCrop(32, padding=4),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+        transform_val = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+
+        target_root = data_root if not data_root.startswith("/content") else "./data"
+        os.makedirs(target_root, exist_ok=True)
+
+        try:
+            train_ds = datasets.CIFAR10(root=target_root, train=True, download=False, transform=transform_train)
+            val_ds = datasets.CIFAR10(root=target_root, train=False, download=False, transform=transform_val)
+        except Exception:
+            print(f"Descargando CIFAR-10 en '{target_root}'...", flush=True)
+            train_ds = datasets.CIFAR10(root=target_root, train=True, download=True, transform=transform_train)
+            val_ds = datasets.CIFAR10(root=target_root, train=False, download=True, transform=transform_val)
+
+        print(f"\n📂 [CIFAR-10 2-Split] Train: {len(train_ds):,} imágenes | Val: {len(val_ds):,} imágenes (Total: {len(train_ds)+len(val_ds):,})", flush=True)
+
+        if preload_gpu and device.type == "cuda":
+            loader_train_all = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
+            loader_val_all = DataLoader(val_ds, batch_size=len(val_ds), shuffle=False)
+            x_train, y_train = next(iter(loader_train_all))
+            x_val, y_val = next(iter(loader_val_all))
+            train_dl = FastGPULoader(x_train.to(device, dtype=torch.float32), y_train.to(device, dtype=torch.long), batch_size=batch_size, shuffle=True)
+            val_dl = FastGPULoader(x_val.to(device, dtype=torch.float32), y_val.to(device, dtype=torch.long), batch_size=batch_size, shuffle=False)
+        else:
+            train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+            val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+
+        return train_dl, val_dl, 3, 32, 10, cifar_classes
