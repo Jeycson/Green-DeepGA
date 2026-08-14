@@ -74,14 +74,26 @@ def main():
     variant = checkpoint.get("variant", "v10")
     execution = checkpoint.get("execution", 1)
 
+    # Detección infalible de in_channels desde la primera capa convolucional de la CNN
+    if hasattr(model, 'features') and len(model.features) > 0 and len(model.features[0]) > 0:
+        first_layer = model.features[0][0]
+        if hasattr(first_layer, 'in_channels'):
+            in_channels = first_layer.in_channels
+
+    # Si el checkpoint tiene registrada la ruta del dataset original, usarla
+    data_root_to_use = args.data_root
+    if checkpoint.get("data_root") and args.data_root == "./data" and os.path.exists(checkpoint["data_root"]):
+        data_root_to_use = checkpoint["data_root"]
+
     print(f"✓ Modelo {variant.upper()} reconstruido exitosamente a partir del genoma guardado.")
     print(f"  - Capas Convolucionales: {genome.n_conv} | Capas Densas (FC): {genome.n_full}")
-    print(f"  - Resolución de entrada: {out_size}x{out_size} px | Canales: {in_channels} | Clases: {n_classes}\n")
+    print(f"  - Resolución de entrada: {out_size}x{out_size} px | Canales Requeridos: {in_channels} | Clases: {n_classes}")
+    print(f"  - Dataset a Utilizar:    {os.path.abspath(data_root_to_use)}\n")
 
-    # 2. Cargar DataLoaders
+    # 2. Cargar DataLoaders con el número exacto de canales y dimensiones requeridas
     if args.use_2split:
         train_dl, val_dl, in_c, img_s, n_c, class_names = load_dataset_2split(
-            data_root=args.data_root,
+            data_root=data_root_to_use,
             img_size=out_size,
             in_channels=in_channels,
             batch_size=args.batch_size,
@@ -92,7 +104,7 @@ def main():
         test_dl = None
     else:
         train_dl, val_dl, test_dl, in_c, img_s, n_c, class_names = load_dataset_auto(
-            data_root=args.data_root,
+            data_root=data_root_to_use,
             img_size=out_size,
             in_channels=in_channels,
             batch_size=args.batch_size,

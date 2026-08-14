@@ -67,7 +67,8 @@ def save_best_model(
     chck_dir: str = "./checkpoints/",
     trained_model: nn.Module = None,
     cnn_metrics: dict = None,
-    auto_download: bool = False
+    auto_download: bool = False,
+    data_root: str = None
 ) -> str:
     """
     Guarda la configuración (genoma), metadatos y pesos (si están disponibles)
@@ -92,6 +93,7 @@ def save_best_model(
         "in_channels": in_channels,
         "out_size": out_size,
         "n_classes": n_classes,
+        "data_root": data_root,
         "cnn_metrics": cnn_metrics or {},
         "state_dict": state_dict
     }

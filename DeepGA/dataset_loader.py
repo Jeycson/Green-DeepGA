@@ -445,14 +445,29 @@ def load_dataset_auto(
         # Cargar CIFAR-10
         from torchvision import datasets, transforms
         cifar_classes = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', 'caballo', 'barco', 'camión']
-        transform_train = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-        transform_test = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
+
+        if in_channels == 1:
+            transform_train = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.Resize((img_size, img_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.5])
+            ])
+            transform_test = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.Resize((img_size, img_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.5])
+            ])
+        else:
+            tf_train_list = [transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+            tf_test_list = [transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+            if img_size != 32:
+                tf_train_list.insert(0, transforms.Resize((img_size, img_size)))
+                tf_test_list.insert(0, transforms.Resize((img_size, img_size)))
+            transform_train = transforms.Compose(tf_train_list)
+            transform_test = transforms.Compose(tf_test_list)
 
         try:
             full_train = datasets.CIFAR10(root=data_root, train=True, download=False, transform=transform_train)
@@ -485,7 +500,7 @@ def load_dataset_auto(
             val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
             test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
-        return train_dl, val_dl, test_dl, 3, 32, 10, cifar_classes
+        return train_dl, val_dl, test_dl, in_channels, img_size, 10, cifar_classes
 
 
 def get_custom_imagefolder_2split_loaders(
@@ -713,16 +728,26 @@ def load_dataset_2split(
     else:
         # CIFAR-10 con asignación completa de 50,000 para Train y 10,000 para Val
         cifar_classes = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', 'caballo', 'barco', 'camión']
-        transform_train = transforms.Compose([
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomCrop(32, padding=4),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-        transform_val = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
+
+        if in_channels == 1:
+            transform_train = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.Resize((img_size, img_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.5])
+            ])
+            transform_val = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.Resize((img_size, img_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.5])
+            ])
+        else:
+            tf_train_list = [transforms.RandomHorizontalFlip(p=0.5), transforms.RandomCrop(32, padding=4) if img_size == 32 else transforms.Resize((img_size, img_size)), transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+            tf_val_list = [transforms.Resize((img_size, img_size)) if img_size != 32 else transforms.Lambda(lambda x: x), transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+            transform_train = transforms.Compose(tf_train_list)
+            transform_val = transforms.Compose(tf_val_list)
 
         target_root = data_root if not data_root.startswith("/content") else "./data"
         os.makedirs(target_root, exist_ok=True)
@@ -735,7 +760,7 @@ def load_dataset_2split(
             train_ds = datasets.CIFAR10(root=target_root, train=True, download=True, transform=transform_train)
             val_ds = datasets.CIFAR10(root=target_root, train=False, download=True, transform=transform_val)
 
-        print(f"\n📂 [CIFAR-10 2-Split] Train: {len(train_ds):,} imágenes | Val: {len(val_ds):,} imágenes (Total: {len(train_ds)+len(val_ds):,})", flush=True)
+        print(f"\n📂 [CIFAR-10 2-Split] Train: {len(train_ds):,} imágenes | Val: {len(val_ds):,} imágenes (Total: {len(train_ds)+len(val_ds):,}) | Canales: {in_channels}", flush=True)
 
         if preload_gpu and device.type == "cuda":
             loader_train_all = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
@@ -748,4 +773,4 @@ def load_dataset_2split(
             train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
             val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
-        return train_dl, val_dl, 3, 32, 10, cifar_classes
+        return train_dl, val_dl, in_channels, img_size, 10, cifar_classes
