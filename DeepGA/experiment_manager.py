@@ -17,7 +17,7 @@ import pandas as pd
 from variants import (
     deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4,
     green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9, green_DeepGA_v10, green_DeepGA_v11,
-    green_MODeepGA_v9, final_evaluation, final_evaluation_mo
+    green_MODeepGA_v9, green_MODeepGA_v10, green_MODeepGA_v11, final_evaluation, final_evaluation_mo
 )
 from Decoding import decoding, CNN
 from model_utils import (
@@ -508,7 +508,34 @@ class ExperimentManager:
         surrogate_stats = None
         mo_stats = None
 
-        if variant.lower() in ["mo_v9", "mov9", "mo-v9", "multiobjective_v9"]:
+        if variant.lower() in ["mo_v11", "mov11", "mo-v11", "multiobjective_v11"]:
+            results_df, final_pop, bestind, surrogate_stats, mo_stats = green_MODeepGA_v11(
+                **common_args,
+                n_islands=n_islands,
+                migration_interval=migration_interval,
+                migration_size=migration_size,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa,
+                mr_min=mr_min,
+                mr_max=mr_max,
+                rho=rho,
+                alpha=alpha,
+                top_k_ratio=top_k_ratio,
+                country_iso_code=self.country_iso_code
+            )
+        elif variant.lower() in ["mo_v10", "mov10", "mo-v10", "multiobjective_v10"]:
+            results_df, final_pop, bestind, surrogate_stats, mo_stats = green_MODeepGA_v10(
+                **common_args,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa,
+                mr_min=mr_min,
+                mr_max=mr_max,
+                rho=rho,
+                alpha=alpha,
+                top_k_ratio=top_k_ratio,
+                country_iso_code=self.country_iso_code
+            )
+        elif variant.lower() in ["mo_v9", "mov9", "mo-v9", "multiobjective_v9"]:
             results_df, final_pop, bestind, surrogate_stats, mo_stats = green_MODeepGA_v9(
                 **common_args,
                 pool_candidates_factor=pool_candidates_factor,
@@ -666,9 +693,9 @@ class ExperimentManager:
         if torch.cuda.is_available() and device.type == "cuda":
             device_str += f" ({torch.cuda.get_device_name(0)})"
 
-        is_mo = (mo_stats is not None) or (variant.lower() in ["mo_v9", "mov9", "mo-v9", "multiobjective_v9"])
+        is_mo = (mo_stats is not None) or variant.lower().startswith("mo")
         val_acc = bestind[1] if is_mo else bestind[2]
-        fit_val = mo_stats.get("final_hypervolume", bestind[1]) if is_mo else bestind[1]
+        fit_val = mo_stats.get("final_hypervolume", bestind[1]) if (is_mo and mo_stats) else bestind[1]
 
         metrics_summary = {
             "variant": variant.upper(),

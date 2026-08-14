@@ -29,8 +29,8 @@ CLASS_NAMES = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', '
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ejecución Multi-Objetivo de DeepGA (Precisión vs Huella de Carbono)")
-    parser.add_argument("--variant", type=str, default="mo_v9", choices=["mo_v9"],
-                        help="Variante Multi-Objetivo a ejecutar (por defecto: mo_v9)")
+    parser.add_argument("--variant", type=str, default="mo_v11", choices=["mo_v9", "mo_v10", "mo_v11"],
+                        help="Variante Multi-Objetivo a ejecutar (por defecto: mo_v11)")
     parser.add_argument("--execution", type=int, default=1,
                         help="Número identificador de la ejecución (por defecto: 1)")
     parser.add_argument("--pop-size", type=int, default=12,
