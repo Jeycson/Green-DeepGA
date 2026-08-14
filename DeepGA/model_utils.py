@@ -366,3 +366,104 @@ def download_all_models_zip(
         download_file(zip_path)
 
     return zip_path
+
+
+def plot_pareto_frontier(
+    pareto_front: list,
+    all_evaluated_history: list = None,
+    title: str = "Frente de Pareto MO-DeepGA (Precisión vs Huella de Carbono)",
+    save_fig_path: str = None,
+    auto_download_plot: bool = False
+):
+    """
+    Grafica el Frente de Pareto 2D (Precisión vs Huella de Carbono gCO2eq).
+    Resalta los 3 modelos representativos de la frontera:
+    - 🏆 Modelo de Máxima Precisión (Best Accuracy)
+    - 🌿 Modelo Más Verde / Menor Huella de Carbono (Greenest / Ultra-Low Carbon)
+    - ⚖️ Modelo Equilibrado (Knee Point / Compromiso Óptimo)
+    """
+    if len(pareto_front) == 0:
+        print("⚠️ No hay individuos en el Frente de Pareto para graficar.")
+        return None
+
+    plt.figure(figsize=(10, 6.5))
+
+    # 1. Graficar todas las arquitecturas exploradas (si están disponibles)
+    if all_evaluated_history and len(all_evaluated_history) > 0:
+        hist_acc = [item[1] for item in all_evaluated_history]
+        hist_carb = [item[2] for item in all_evaluated_history]
+        plt.scatter(hist_carb, hist_acc, c="#94a3b8", alpha=0.45, s=35, label="Arquitecturas Evaluadas (Espacio de Búsqueda)")
+
+    # 2. Ordenar Frente de Pareto por huella de carbono ascendente
+    pf_sorted = sorted(pareto_front, key=lambda x: x[2])
+    pf_carb = [p[2] for p in pf_sorted]
+    pf_acc = [p[1] for p in pf_sorted]
+
+    # Conectar el frente con línea punteada
+    plt.plot(pf_carb, pf_acc, color="#059669", linestyle="--", linewidth=2.0, alpha=0.8, label="Frontera de Pareto (F1)")
+    plt.scatter(pf_carb, pf_acc, color="#10b981", s=70, edgecolors="#047857", linewidth=1.5, zorder=3)
+
+    # 3. Identificar puntos clave
+    best_acc_ind = max(pareto_front, key=lambda x: x[1])
+    greenest_ind = min(pareto_front, key=lambda x: x[2])
+
+    # Knee Point
+    all_accs = [p[1] for p in pareto_front]
+    all_carbs = [p[2] for p in pareto_front]
+    min_a, max_a = min(all_accs), max(all_accs)
+    min_c, max_c = min(all_carbs), max(all_carbs)
+    range_a = max(1e-5, max_a - min_a)
+    range_c = max(1e-5, max_c - min_c)
+
+    knee_ind = pareto_front[0]
+    min_dist = float('inf')
+    for ind in pareto_front:
+        norm_a = (max_a - ind[1]) / range_a
+        norm_c = (ind[2] - min_c) / range_c
+        dist = np.sqrt(norm_a**2 + norm_c**2)
+        if dist < min_dist:
+            min_dist = dist
+            knee_ind = ind
+
+    # 4. Destacar los 3 modelos clave con marcadores especiales y anotaciones
+    # Máxima Precisión
+    plt.scatter([best_acc_ind[2]], [best_acc_ind[1]], color="#f59e0b", s=180, marker="*", edgecolors="#b45309", linewidth=2, zorder=5, label=f"🏆 Máx. Precisión ({best_acc_ind[1]:.2f}%, {best_acc_ind[2]:.4f}g)")
+    plt.annotate(f"🏆 Máx. Precisión\n{best_acc_ind[1]:.2f}% | {best_acc_ind[2]:.3f} gCO2",
+                 (best_acc_ind[2], best_acc_ind[1]),
+                 textcoords="offset points", xytext=(10, 10),
+                 fontsize=9, fontweight="bold", color="#92400e",
+                 bbox=dict(boxstyle="round,pad=0.3", fc="#fef3c7", ec="#f59e0b", lw=1))
+
+    # Más Verde
+    plt.scatter([greenest_ind[2]], [greenest_ind[1]], color="#16a34a", s=140, marker="P", edgecolors="#14532d", linewidth=2, zorder=5, label=f"🌿 Más Verde ({greenest_ind[1]:.2f}%, {greenest_ind[2]:.4f}g)")
+    plt.annotate(f"🌿 Más Verde\n{greenest_ind[1]:.2f}% | {greenest_ind[2]:.3f} gCO2",
+                 (greenest_ind[2], greenest_ind[1]),
+                 textcoords="offset points", xytext=(-20, -25),
+                 fontsize=9, fontweight="bold", color="#14532d",
+                 bbox=dict(boxstyle="round,pad=0.3", fc="#dcfce7", ec="#16a34a", lw=1))
+
+    # Knee Point
+    plt.scatter([knee_ind[2]], [knee_ind[1]], color="#0ea5e9", s=140, marker="D", edgecolors="#0369a1", linewidth=2, zorder=5, label=f"⚖️ Equilibrado / Knee ({knee_ind[1]:.2f}%, {knee_ind[2]:.4f}g)")
+    plt.annotate(f"⚖️ Compromiso Knee\n{knee_ind[1]:.2f}% | {knee_ind[2]:.3f} gCO2",
+                 (knee_ind[2], knee_ind[1]),
+                 textcoords="offset points", xytext=(10, -20),
+                 fontsize=9, fontweight="bold", color="#0369a1",
+                 bbox=dict(boxstyle="round,pad=0.3", fc="#e0f2fe", ec="#0ea5e9", lw=1))
+
+    plt.xlabel("Huella de Carbono por Entrenamiento (gCO2eq)  [↓ Minimizar]", fontsize=11, fontweight="bold")
+    plt.ylabel("Precisión en Validación (%)  [↑ Maximizar]", fontsize=11, fontweight="bold")
+    plt.title(title, fontsize=13, fontweight="bold", pad=12)
+    plt.grid(True, linestyle=":", alpha=0.6)
+    plt.legend(loc="lower right", framealpha=0.9)
+    plt.tight_layout()
+
+    if save_fig_path:
+        os.makedirs(os.path.dirname(os.path.abspath(save_fig_path)), exist_ok=True)
+        plt.savefig(save_fig_path, dpi=300)
+        print(f"📊 Gráfico del Frente de Pareto guardado en: {os.path.abspath(save_fig_path)}")
+        if auto_download_plot:
+            download_file(save_fig_path)
+
+    plt.show()
+    return save_fig_path
+

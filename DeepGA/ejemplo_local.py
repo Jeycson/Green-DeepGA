@@ -26,8 +26,8 @@ CLASS_NAMES = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', '
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ejecución local de DeepGA con ExperimentManager")
-    parser.add_argument("--variant", type=str, default="v11", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11"],
-                        help="Variante de DeepGA a ejecutar (por defecto: v11)")
+    parser.add_argument("--variant", type=str, default="mo_v9", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "mo_v9"],
+                        help="Variante de DeepGA a ejecutar (por defecto: mo_v9)")
     parser.add_argument("--execution", type=int, default=1,
                         help="Número identificador de la ejecución (por defecto: 1)")
     parser.add_argument("--pop-size", type=int, default=12,

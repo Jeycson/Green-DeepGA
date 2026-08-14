@@ -17,7 +17,7 @@ import pandas as pd
 from variants import (
     deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4,
     green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9, green_DeepGA_v10, green_DeepGA_v11,
-    final_evaluation
+    green_MODeepGA_v9, final_evaluation, final_evaluation_mo
 )
 from Decoding import decoding, CNN
 from model_utils import (
@@ -26,10 +26,12 @@ from model_utils import (
     evaluate_model as util_evaluate_model,
     predict_image as util_predict_image,
     generate_confusion_matrix as util_generate_confusion_matrix,
+    plot_pareto_frontier,
     download_file,
     download_all_models_zip
 )
 from dataset_loader import load_dataset_auto, get_custom_imagefolder_loaders
+
 
 
 # Tracker de carbono opcional (CodeCarbon con fallback analítico)
@@ -221,22 +223,63 @@ def save_experiment_report_txt(metrics_summary: dict, chck_dir: str = "./checkpo
     lines.append(f"Tiempo Total de Ejecución: {metrics_summary.get('execution_time_seconds', 0):.2f} s ({metrics_summary.get('execution_time_minutes', 0):.2f} min)")
     lines.append(f"Huella de Carbono:         {metrics_summary.get('carbon_emissions_g_co2', 0):.4f} gCO2eq")
     lines.append(f"Consumo Energético:        {metrics_summary.get('energy_consumed_kwh', 0):.6f} kWh")
-    lines.append("-" * 75)
-    lines.append("2. RENDIMIENTO DE LA MEJOR ARQUITECTURA (CNN GANADORA)")
-    lines.append("-" * 75)
-    lines.append(f"Fitness Óptimo:            {metrics_summary.get('best_fitness', 0):.4f}")
-    lines.append(f"Precisión Validación (GA): {metrics_summary.get('best_val_accuracy', 0):.2f}% (Validación durante búsqueda evolutiva)")
-    if metrics_summary.get('final_test_accuracy') is not None:
-        lines.append(f"Precisión Test Set (10k):  {metrics_summary.get('final_test_accuracy', 0):.2f}% (Test set independiente de CIFAR-10)")
-    lines.append(f"Parámetros Totales:        {metrics_summary.get('best_total_params', 0):,}")
-    lines.append(f"Parámetros Entrenables:    {metrics_summary.get('best_trainable_params', 0):,}")
-    lines.append(f"FLOPs Estimados:           {metrics_summary.get('best_estimated_flops', 0):,}")
-    lines.append(f"Tamaño en Memoria:         {metrics_summary.get('best_model_size_mb', 0):.3f} MB")
-    lines.append(f"Capas Convolucionales:     {metrics_summary.get('conv_layers_count', 0)}")
-    lines.append(f"Capas Densas (FC):         {metrics_summary.get('fc_layers_count', 0)}")
-    lines.append(f"Conexiones Residuales:     {metrics_summary.get('skip_connections_count', 0)}")
-    if metrics_summary.get('saved_model_path'):
-        lines.append(f"Ruta Checkpoint .pth:      {os.path.abspath(metrics_summary['saved_model_path'])}")
+    # 2. Rendimiento de la arquitectura o Frente de Pareto
+    if metrics_summary.get("is_multiobjective"):
+        lines.append("-" * 75)
+        lines.append("2. RENDIMIENTO MULTI-OBJETIVO (FRENTE DE PARETO F1)")
+        lines.append("-" * 75)
+        lines.append(f"Soluciones No Dominadas (F1): {metrics_summary.get('pareto_front_size', 0)} redes Pareto-óptimas")
+        lines.append(f"Hipervolumen 2D Final (HV):   {metrics_summary.get('final_hypervolume', 0.0):.4f}")
+        
+        b_acc = metrics_summary.get("best_accuracy_individual")
+        if b_acc:
+            lines.append(f"\n🏆 Modelo de Máxima Precisión:")
+            lines.append(f"   - Precisión (Val): {b_acc[1]:.2f}% | Huella Carbono: {b_acc[2]:.4f} gCO2eq | Parámetros: {b_acc[3].get('total_params', 0):,} | FLOPs: {b_acc[3].get('flops_per_sample', 0):,}")
+            
+        b_grn = metrics_summary.get("greenest_individual")
+        if b_grn:
+            lines.append(f"\n🌿 Modelo Más Ecológico (Ultra-Low Carbon):")
+            lines.append(f"   - Precisión (Val): {b_grn[1]:.2f}% | Huella Carbono: {b_grn[2]:.4f} gCO2eq | Parámetros: {b_grn[3].get('total_params', 0):,} | FLOPs: {b_grn[3].get('flops_per_sample', 0):,}")
+
+        b_kne = metrics_summary.get("knee_point_individual")
+        if b_kne:
+            lines.append(f"\n⚖️ Modelo Equilibrado (Knee Point / Compromiso Óptimo):")
+            lines.append(f"   - Precisión (Val): {b_kne[1]:.2f}% | Huella Carbono: {b_kne[2]:.4f} gCO2eq | Parámetros: {b_kne[3].get('total_params', 0):,} | FLOPs: {b_kne[3].get('flops_per_sample', 0):,}")
+
+        # Tabla resumen de todas las soluciones del frente de Pareto
+        p_front = metrics_summary.get("pareto_front", [])
+        if p_front:
+            lines.append("\nTabla Completa de Soluciones del Frente de Pareto (F1):")
+            lines.append(f" {'ID':<4} | {'Precisión':<11} | {'Huella CO2':<14} | {'Parámetros':<12} | {'Conv/FC':<8} | {'Skips':<6}")
+            lines.append(" " + "-" * 65)
+            for idx, sol in enumerate(p_front):
+                sol_e = sol[0]
+                sol_a = sol[1]
+                sol_c = sol[2]
+                sol_m = sol[3] if len(sol) > 3 and isinstance(sol[3], dict) else {}
+                p_count = sol_m.get('total_params', 0)
+                cf_str = f"{sol_e.n_conv}/{sol_e.n_full}"
+                sk_count = sum(sol_e.second_level) if hasattr(sol_e, 'second_level') else 0
+                lines.append(f" #{idx+1:<3} | {sol_a:>6.2f}%     | {sol_c:>8.4f} gCO2  | {p_count:>10,} | {cf_str:^8} | {sk_count:^6}")
+
+    else:
+        lines.append("-" * 75)
+        lines.append("2. RENDIMIENTO DE LA MEJOR ARQUITECTURA (CNN GANADORA)")
+        lines.append("-" * 75)
+        lines.append(f"Fitness Óptimo:            {metrics_summary.get('best_fitness', 0):.4f}")
+        lines.append(f"Precisión Validación (GA): {metrics_summary.get('best_val_accuracy', 0):.2f}% (Validación durante búsqueda evolutiva)")
+        if metrics_summary.get('final_test_accuracy') is not None:
+            lines.append(f"Precisión Test Set (10k):  {metrics_summary.get('final_test_accuracy', 0):.2f}% (Test set independiente de CIFAR-10)")
+        lines.append(f"Parámetros Totales:        {metrics_summary.get('best_total_params', 0):,}")
+        lines.append(f"Parámetros Entrenables:    {metrics_summary.get('best_trainable_params', 0):,}")
+        lines.append(f"FLOPs Estimados:           {metrics_summary.get('best_estimated_flops', 0):,}")
+        lines.append(f"Tamaño en Memoria:         {metrics_summary.get('best_model_size_mb', 0):.3f} MB")
+        lines.append(f"Capas Convolucionales:     {metrics_summary.get('conv_layers_count', 0)}")
+        lines.append(f"Capas Densas (FC):         {metrics_summary.get('fc_layers_count', 0)}")
+        lines.append(f"Conexiones Residuales:     {metrics_summary.get('skip_connections_count', 0)}")
+        if metrics_summary.get('saved_model_path'):
+            lines.append(f"Ruta Checkpoint .pth:      {os.path.abspath(metrics_summary['saved_model_path'])}")
+
 
     # Detalle de capas de la mejor CNN
     bestind = metrics_summary.get("best_individual_raw")
@@ -463,8 +506,18 @@ class ExperimentManager:
 
         pruned_stats = None
         surrogate_stats = None
+        mo_stats = None
 
-        if variant.lower() == "v11":
+        if variant.lower() in ["mo_v9", "mov9", "mo-v9", "multiobjective_v9"]:
+            results_df, final_pop, bestind, surrogate_stats, mo_stats = green_MODeepGA_v9(
+                **common_args,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa,
+                mr_min=mr_min,
+                mr_max=mr_max,
+                country_iso_code=self.country_iso_code
+            )
+        elif variant.lower() == "v11":
             results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v11(
                 **common_args,
                 n_islands=n_islands,
@@ -613,18 +666,23 @@ class ExperimentManager:
         if torch.cuda.is_available() and device.type == "cuda":
             device_str += f" ({torch.cuda.get_device_name(0)})"
 
+        is_mo = (mo_stats is not None) or (variant.lower() in ["mo_v9", "mov9", "mo-v9", "multiobjective_v9"])
+        val_acc = bestind[1] if is_mo else bestind[2]
+        fit_val = mo_stats.get("final_hypervolume", bestind[1]) if is_mo else bestind[1]
+
         metrics_summary = {
             "variant": variant.upper(),
             "execution": execution,
+            "is_multiobjective": is_mo,
             "hardware_device": device_str,
             "execution_time_seconds": round(elapsed_seconds, 2),
             "execution_time_minutes": round(elapsed_seconds / 60.0, 2),
             "carbon_emissions_g_co2": round(emissions_g_co2, 4),
             "energy_consumed_kwh": round(energy_kwh, 6),
-            "best_accuracy": bestind[2],
-            "best_val_accuracy": bestind[2],
+            "best_accuracy": val_acc,
+            "best_val_accuracy": val_acc,
             "final_test_accuracy": final_test_acc,
-            "best_fitness": bestind[1],
+            "best_fitness": fit_val,
             "best_total_params": cnn_metrics["total_params"],
             "best_trainable_params": cnn_metrics["trainable_params"],
             "best_model_size_mb": cnn_metrics["model_size_mb"],
@@ -642,6 +700,16 @@ class ExperimentManager:
             "class_names": class_names,
             "txt_report_path": None
         }
+
+        if is_mo and mo_stats:
+            metrics_summary["pareto_front"] = mo_stats.get("all_pareto_solutions", final_pop)
+            metrics_summary["pareto_front_size"] = mo_stats.get("pareto_front_size", len(final_pop))
+            metrics_summary["final_hypervolume"] = mo_stats.get("final_hypervolume", 0.0)
+            metrics_summary["best_accuracy_individual"] = mo_stats.get("best_accuracy_individual", bestind)
+            metrics_summary["greenest_individual"] = mo_stats.get("greenest_individual", bestind)
+            metrics_summary["knee_point_individual"] = mo_stats.get("knee_point_individual", bestind)
+            metrics_summary["mo_stats"] = mo_stats
+
 
         if pruned_stats is not None:
             metrics_summary["pruning_metrics"] = {
@@ -770,4 +838,35 @@ class ExperimentManager:
     def download_all_models(self, chck_dir: str = "./checkpoints/", zip_name: str = "deepga_best_models.zip"):
         """Empaqueta todos los modelos guardados en un ZIP y los descarga."""
         return download_all_models_zip(chck_dir=chck_dir, zip_name=zip_name, auto_download=True)
+
+    def generate_pareto_front_plot(
+        self,
+        metrics_summary: dict,
+        title: str = None,
+        save_fig_path: str = None,
+        auto_download_plot: bool = False
+    ):
+        """
+        Genera y guarda el gráfico del Frente de Pareto 2D (Precisión vs Huella de Carbono gCO2eq).
+        Destaca el modelo de máxima precisión, el modelo más verde y el modelo de compromiso (Knee Point).
+        """
+        pareto_front = metrics_summary.get("pareto_front", [])
+        history = metrics_summary.get("evaluated_history", [])
+        variant = metrics_summary.get("variant", "MO-DEEPGA")
+        execution = metrics_summary.get("execution", 1)
+        chck_dir = metrics_summary.get("chck_dir", "./checkpoints/")
+
+        if title is None:
+            title = f"Frente de Pareto - Green MO-DeepGA ({variant.upper()})"
+        if save_fig_path is None:
+            save_fig_path = os.path.join(chck_dir, f"pareto_front_{variant.lower()}_exec_{execution}.png")
+
+        return plot_pareto_frontier(
+            pareto_front=pareto_front,
+            all_evaluated_history=history,
+            title=title,
+            save_fig_path=save_fig_path,
+            auto_download_plot=auto_download_plot
+        )
+
 
