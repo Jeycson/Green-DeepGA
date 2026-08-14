@@ -32,35 +32,7 @@ def generate_random_encoding(min_conv: int = 2, max_conv: int = 5,
     """
     Genera un genoma arquitectónico estocástico uniforme sin sesgo de feromona.
     """
-    n_conv = random.randint(min_conv, max_conv)
-    n_full = random.randint(min_full, max_full)
-    
-    first_level = []
-    # Capas convolucionales
-    for _ in range(n_conv):
-        layer = {
-            'nfilters': random.choice(NFILTERS),
-            'fsize': random.choice(FSIZES),
-            'pool': random.choice(PTYPE),
-            'psize': random.choice(PSIZES)
-        }
-        first_level.append(layer)
-
-    # Capas densas (FC)
-    for _ in range(n_full):
-        layer = {
-            'neurons': random.choice(NEURONS)
-        }
-        first_level.append(layer)
-
-    # Conexiones residuales (segundo nivel)
-    total_skips = (n_conv * (n_conv - 1)) // 2
-    second_level = [random.choice([0, 1]) if random.random() < 0.3 else 0 for _ in range(total_skips)]
-
-    encoding = Encoding(n_conv, n_full)
-    encoding.first_level = first_level
-    encoding.second_level = second_level
-    return encoding
+    return Encoding(min_conv, max_conv, min_full, max_full)
 
 
 def compute_individual_structural_vector(genome: Encoding, max_conv: int = 5, max_full: int = 4) -> np.ndarray:
