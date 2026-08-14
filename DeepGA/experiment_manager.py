@@ -673,6 +673,7 @@ class ExperimentManager:
             print(f"   (Validación durante re-entrenamiento sobre el conjunto de test independiente: 10,000 imágenes)")
             trained_final_model = final_evaluation(
                 execution=execution,
+                bestind=bestind,
                 train_dl=train_dl,
                 val_dl=test_dl if test_dl is not None else val_dl,  # Validación sobre test (si existe) o val_dl
                 lr=lr,
@@ -919,5 +920,75 @@ class ExperimentManager:
             save_fig_path=save_fig_path,
             auto_download_plot=auto_download_plot
         )
+
+    def train_saved_model(
+        self,
+        model_path: str,
+        epochs: int = 10,
+        data_root: str = "./data",
+        batch_size: int = 64,
+        lr: float = 1e-4,
+        use_2split: bool = False,
+        val_ratio: float = 0.15,
+        device: torch.device = None
+    ):
+        """
+        Re-entrena completamente un modelo DeepGA guardado (.pth o .pkl) sin volver a ejecutar el GA.
+        """
+        from DistributedTraining import training
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        model, checkpoint = load_saved_model(model_path, device=device)
+        genome = checkpoint["genome"]
+        in_channels = checkpoint.get("in_channels", 3)
+        out_size = checkpoint.get("out_size", 32)
+        n_classes = checkpoint.get("n_classes", 10)
+        variant = checkpoint.get("variant", "deepga")
+        execution = checkpoint.get("execution", 1)
+
+        if use_2split:
+            train_dl, val_dl, in_c, img_s, n_c, class_names = load_dataset_2split(
+                data_root=data_root, img_size=out_size, in_channels=in_channels,
+                batch_size=batch_size, val_ratio=val_ratio, device=device
+            )
+            test_dl = None
+        else:
+            train_dl, val_dl, test_dl, in_c, img_s, n_c, class_names = load_dataset_auto(
+                data_root=data_root, img_size=out_size, in_channels=in_channels,
+                batch_size=batch_size, device=device
+            )
+
+        eval_dl = test_dl if test_dl is not None else val_dl
+        loss_func = nn.NLLLoss()
+        acc_list = []
+
+        print(f"🚀 Re-entrenando modelo guardado ({variant.upper()}) por {epochs} épocas...")
+        fit_val, final_acc, pars, trained_model = training(
+            '1', device, model, epochs, loss_func, train_dl, eval_dl, lr, 0.0, 2e6, acc_list
+        )
+
+        chck_dir = os.path.dirname(os.path.abspath(model_path))
+        bestind = [genome, fit_val, final_acc, pars]
+        saved_trained_path = save_best_model(
+            variant=f"{variant}_trained_{epochs}epochs",
+            execution=execution,
+            bestind=bestind,
+            in_channels=in_channels,
+            out_size=out_size,
+            n_classes=n_classes,
+            chck_dir=chck_dir,
+            trained_model=trained_model
+        )
+
+        return {
+            "trained_model": trained_model,
+            "final_accuracy": final_acc,
+            "params": pars,
+            "saved_model_path": saved_trained_path,
+            "eval_dataloader": eval_dl,
+            "class_names": class_names
+        }
+
 
 
