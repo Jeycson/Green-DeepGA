@@ -20,7 +20,7 @@ def conv_out_size(W, K):
 def pool_out_size(W, K):
   return math.floor((W - K)/2) + 1
 
-def decoding(encoding, in_channels, out_size, n_classes):
+def decoding(encoding, in_channels, out_size, n_classes, max_spatial_size = None):
   n_conv = encoding.n_conv
   n_full = encoding.n_full
   first_level = encoding.first_level
@@ -131,7 +131,13 @@ def decoding(encoding, in_channels, out_size, n_classes):
     prev += 1
 
     features.append(operation)
-  in_size = out_size*out_size*in_channels
+
+  # Reducción adaptativa opcional de tamaño espacial para prevenir explosión de memoria VRAM
+  final_spatial = out_size
+  if max_spatial_size is not None and out_size > max_spatial_size:
+    final_spatial = max_spatial_size
+
+  in_size = final_spatial * final_spatial * in_channels
   for i in range(n_conv,(n_conv + n_full)):
     layer = first_level[i]
     n_neurons = layer['neurons']
@@ -146,7 +152,7 @@ def decoding(encoding, in_channels, out_size, n_classes):
 
 '''Networks class'''
 class CNN(nn.Module):
-  def __init__(self, encoding, features, classifier, sizes, init_weights = False):
+  def __init__(self, encoding, features, classifier, sizes, init_weights = False, max_spatial_size = None):
     super(CNN, self).__init__()
     extraction = []
     for layer in features:
@@ -156,6 +162,19 @@ class CNN(nn.Module):
     self.features = features
     self.second_level = encoding.second_level
     self.sizes = sizes
+
+    # Detección automática o explícita de Adaptive Pooling para ahorro de memoria
+    self.adaptive_pool = None
+    if max_spatial_size is not None and len(sizes) > 0 and sizes[-1][0] > max_spatial_size:
+      self.adaptive_pool = nn.AdaptiveAvgPool2d((max_spatial_size, max_spatial_size))
+    elif len(classifier) > 0 and isinstance(classifier[0], nn.Linear) and len(sizes) > 0:
+      full_feat_size = sizes[-1][0] * sizes[-1][0] * sizes[-1][1]
+      linear_in = classifier[0].in_features
+      if linear_in < full_feat_size and linear_in % sizes[-1][1] == 0:
+        spatial_sq = linear_in // sizes[-1][1]
+        spatial_side = int(math.isqrt(spatial_sq))
+        if spatial_side * spatial_side == spatial_sq:
+          self.adaptive_pool = nn.AdaptiveAvgPool2d((spatial_side, spatial_side))
 
     # Apply He initialization
     if init_weights:
@@ -227,8 +246,12 @@ class CNN(nn.Module):
 
       prev += 1
 
+    # Reducción adaptativa opcional si está activada
+    if hasattr(self, 'adaptive_pool') and self.adaptive_pool is not None:
+      x = self.adaptive_pool(x)
+
     #print('Classification size: ', x.shape)
-    x = torch.flatten(x,1)
+    x = torch.flatten(x, 1)
     '''Classification'''
     '''for l in self.classifier:
       x = l(x)'''

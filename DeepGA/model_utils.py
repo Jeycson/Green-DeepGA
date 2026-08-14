@@ -121,9 +121,8 @@ def load_saved_model(model_path: str, device: torch.device = None):
     Carga un modelo exportado (.pth o .pkl), reconstruye su arquitectura exacta
     a partir del genoma guardado y carga sus pesos.
     
-    Retorna:
-        model (torch.nn.Module): Modelo reconstruido en modo eval()
-        checkpoint_data (dict): Diccionario con genoma, métricas y metadatos
+    Ajusta automáticamente la resolución (out_size) e in_channels si detecta
+    discrepancias dimensionales con los pesos entrenados en state_dict.
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -145,21 +144,72 @@ def load_saved_model(model_path: str, device: torch.device = None):
     in_channels = checkpoint.get("in_channels", 3)
     out_size = checkpoint.get("out_size", 32)
     n_classes = checkpoint.get("n_classes", 10)
+    state_dict = checkpoint.get("state_dict")
 
-    # Reconstruir la red convolucional
+    # Detección infalible de canales desde state_dict
+    if state_dict is not None and "extraction.0.weight" in state_dict:
+        in_channels = state_dict["extraction.0.weight"].shape[1]
+
+    # Reconstruir la red convolucional base
     network = decoding(genome, in_channels, out_size, n_classes)
+
+    # Reconciliación automática de resolución (out_size) si state_dict tiene dimensión distinta
+    if state_dict is not None and "classifier.0.weight" in state_dict:
+        target_in_features = state_dict["classifier.0.weight"].shape[1]
+        current_in_features = network[1][0].in_features
+        if current_in_features != target_in_features:
+            matched = False
+            for test_res in [32, 64, 28, 128, 256, 16, 48, 96, 224, 40, 56]:
+                try:
+                    test_net = decoding(genome, in_channels, test_res, n_classes)
+                    if test_net[1][0].in_features == target_in_features:
+                        out_size = test_res
+                        network = test_net
+                        matched = True
+                        break
+                except Exception:
+                    continue
+
+            if not matched:
+                n_neurons = state_dict["classifier.0.weight"].shape[0]
+                network[1][0] = nn.Linear(target_in_features, n_neurons)
+
     model = CNN(genome, network[0], network[1], network[2])
 
-    if checkpoint.get("state_dict") is not None:
-        model.load_state_dict(checkpoint["state_dict"])
-        print(f"✅ Pesos cargados correctamente para variante {checkpoint.get('variant', '').upper()}.")
+    if state_dict is not None:
+        model.load_state_dict(state_dict)
+        print(f"✅ Pesos cargados correctamente para variante {checkpoint.get('variant', '').upper()} ({in_channels} canales, entrada {out_size}x{out_size}).")
     else:
         print(f"⚠️ El checkpoint contiene la arquitectura pero no pesos preentrenados finales.")
 
     model.to(device)
     model.eval()
 
+    checkpoint["out_size"] = out_size
+    checkpoint["in_channels"] = in_channels
+
     return model, checkpoint
+
+
+def _adapt_input_tensor(xb: torch.Tensor, model: nn.Module, expected_size: int = None) -> torch.Tensor:
+    """Adapta canales y resolución de xb para que coincida exactamente con lo esperado por la CNN."""
+    # 1. Adaptar canales
+    req_channels = 3
+    if hasattr(model, 'features') and len(model.features) > 0 and len(model.features[0]) > 0:
+        first_mod = model.features[0][0]
+        if hasattr(first_mod, 'in_channels'):
+            req_channels = first_mod.in_channels
+
+    if xb.shape[1] == 3 and req_channels == 1:
+        xb = xb.mean(dim=1, keepdim=True)
+    elif xb.shape[1] == 1 and req_channels == 3:
+        xb = xb.repeat(1, 3, 1, 1)
+
+    # 2. Adaptar resolución espacial si es necesario
+    if expected_size is not None and (xb.shape[2] != expected_size or xb.shape[3] != expected_size):
+        xb = nn.functional.interpolate(xb, size=(expected_size, expected_size), mode='bilinear', align_corners=False)
+
+    return xb
 
 
 def evaluate_model(
@@ -167,7 +217,7 @@ def evaluate_model(
     dataloader,
     device: torch.device = None
 ):
-    """Evalúa un modelo sobre un DataLoader."""
+    """Evalúa un modelo sobre un DataLoader con adaptación dimensional automática."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -181,6 +231,8 @@ def evaluate_model(
                 xb, yb = data[0].to(device), data[1].to(device)
             else:
                 xb, yb = data["image"].to(device), data["label"].to(device)
+
+            xb = _adapt_input_tensor(xb, model)
             outputs = model(xb)
             _, predicted = torch.max(outputs.data, 1)
             total += yb.size(0)
@@ -286,6 +338,7 @@ def generate_confusion_matrix(
                 continue
 
             xb = xb.to(device, dtype=torch.float32)
+            xb = _adapt_input_tensor(xb, model)
             outputs = model(xb)
             preds = torch.argmax(outputs, dim=1).cpu().numpy()
 

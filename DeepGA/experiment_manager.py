@@ -16,10 +16,11 @@ import pandas as pd
 # Importación directa de la función original
 from variants import (
     deepGA, green_DeepGA_v2, green_DeepGA_v3, green_DeepGA_v4,
-    green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9, green_DeepGA_v10, green_DeepGA_v11,
+    green_DeepGA_v5, green_DeepGA_v6, green_DeepGA_v7, green_DeepGA_v8, green_DeepGA_v9, green_DeepGA_v10, green_DeepGA_v11, green_DeepGA_v12,
     green_MODeepGA_v9, green_MODeepGA_v10, green_MODeepGA_v11, final_evaluation, final_evaluation_mo
 )
 from Decoding import decoding, CNN
+from memory_optimizer import GPUMemoryOptimizer
 from model_utils import (
     save_best_model,
     load_saved_model,
@@ -414,11 +415,13 @@ class ExperimentManager:
         mr_min: float = 0.10,
         mr_max: float = 0.85,
         rho: float = 0.10,
-        alpha: float = 1.2,
-        top_k_ratio: float = 0.35,
         n_islands: int = 3,
-        migration_interval: int = 10,
-        migration_size: int = 2,
+        migration_interval: int = 12,
+        migration_size: int = 1,
+        target_diversity: float = 0.25,
+        stagnation_limit: int = 4,
+        use_amp: bool = True,
+        max_spatial_size: int = 4,
         data_root: str = "./data",
         img_size: int = 64,
         in_channels: int = 3,
@@ -436,15 +439,18 @@ class ExperimentManager:
         custom_class_names: list = None
     ):
         """
-        Ejecuta la variante seleccionada de DeepGA (v1 .. v11, mo_v9 .. mo_v11) sobre CIFAR-10 o cualquier dataset personalizado.
+        Ejecuta la variante seleccionada de DeepGA (v1 .. v12, mo_v9 .. mo_v11) sobre CIFAR-10 o cualquier dataset personalizado.
         
-        Parámetros de Dataset:
+        Parámetros de Dataset y Memoria:
         - data_root (str): Ruta al dataset (ej. "./data" o "./dataset/covid").
-        - img_size (int): Resolución de imagen (por defecto: 64 o 32).
+        - img_size (int): Resolución de imagen (por defecto: 64 o 32; soporta 128, 256, etc.).
         - in_channels (int): Canales de entrada (3 para RGB, 1 para escala de grises).
-        - use_2split (bool): Si True, divide el dataset estrictamente en 2 particiones (Train y Val),
-                             maximizando el número de imágenes asignadas al entrenamiento sin reservar test set.
-        - val_ratio (float): Fracción del dataset para validación en modo 2-split (por defecto 0.15 -> 85% Train / 15% Val).
+        - use_amp (bool): Si True, activa Automatic Mixed Precision (FP16) para reducir a la mitad la VRAM.
+        - max_spatial_size (int): Tamaño espacial máximo tras convs mediante Adaptive Pooling para evitar explosión en Linear.
+        - target_diversity (float): Diversidad objetivo para autorregulación de tasa de mutación (V12).
+        - stagnation_limit (int): Número de generaciones sin mejora antes de aplicar anti-estancamiento (V12).
+        - use_2split (bool): Si True, divide el dataset estrictamente en 2 particiones (Train y Val).
+        - val_ratio (float): Fracción del dataset para validación en modo 2-split.
         """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -568,6 +574,21 @@ class ExperimentManager:
                 mr_min=mr_min,
                 mr_max=mr_max,
                 country_iso_code=self.country_iso_code
+            )
+        elif variant.lower() == "v12":
+            results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v12(
+                **common_args,
+                n_islands=n_islands,
+                migration_interval=migration_interval,
+                migration_size=migration_size,
+                pool_candidates_factor=pool_candidates_factor,
+                kappa=kappa,
+                mr_min=mr_min,
+                mr_max=mr_max,
+                target_diversity=target_diversity,
+                stagnation_limit=stagnation_limit,
+                use_amp=use_amp,
+                max_spatial_size=max_spatial_size
             )
         elif variant.lower() == "v11":
             results_df, final_pop, bestind, surrogate_stats = green_DeepGA_v11(
@@ -836,7 +857,10 @@ class ExperimentManager:
             print(f"   - Error MAE Predicción:    {surrogate_stats['mean_absolute_error_fit']:.4f}", flush=True)
             print(f"   - Muestras del Subrogado:  {surrogate_stats['surrogate_training_samples']}", flush=True)
             if 'n_islands' in surrogate_stats:
-                print(f"   - Modelo de Islas (V11):   {surrogate_stats['n_islands']} Islas | {surrogate_stats['total_migrations_performed']} Migraciones realizadas | Div Inter-Islas: {surrogate_stats.get('final_inter_island_diversity', 0.0):.4f}", flush=True)
+                lines_variant = "V12" if metrics_summary['variant'].upper() == "V12" else "V11"
+                print(f"   - Modelo de Islas ({lines_variant}):   {surrogate_stats['n_islands']} Islas | {surrogate_stats['total_migrations_performed']} Migraciones realizadas | Div Inter-Islas: {surrogate_stats.get('final_inter_island_diversity', 0.0):.4f}", flush=True)
+            if 'use_amp' in surrogate_stats:
+                print(f"   - Memoria VRAM Acelerada:  AMP FP16={surrogate_stats.get('use_amp', True)} | Adaptive Spatial Cap={surrogate_stats.get('max_spatial_size', 4)}x{surrogate_stats.get('max_spatial_size', 4)}", flush=True)
             if 'pheromone_motifs' in surrogate_stats:
                 pm = surrogate_stats['pheromone_motifs']
                 print(f"   - Feromonas Favorecen:     Conv={pm.get('favored_conv_count')}, FC={pm.get('favored_fc_count')}, Skips={len(pm.get('reinforced_skip_connections', []))}", flush=True)

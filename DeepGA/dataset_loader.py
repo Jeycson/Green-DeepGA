@@ -407,6 +407,10 @@ def load_dataset_auto(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    if img_size >= 128 and preload_gpu:
+        print(f"ℹ️  [Memory Optimizer] Resolución alta detectada ({img_size}x{img_size}). Se utiliza DataLoader con Pinned Memory para proteger la VRAM de la GPU.", flush=True)
+        preload_gpu = False
+
     # Verificar si es una carpeta con subdirectorios de clases
     is_custom_folder = False
     is_presplit_folder = False
@@ -646,6 +650,10 @@ def load_dataset_2split(
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if img_size >= 128 and preload_gpu:
+        print(f"ℹ️  [Memory Optimizer] Resolución alta detectada ({img_size}x{img_size}). Se utiliza DataLoader 2-Split con Pinned Memory para proteger la VRAM de la GPU.", flush=True)
+        preload_gpu = False
 
     is_custom_folder = False
     is_presplit_folder = False

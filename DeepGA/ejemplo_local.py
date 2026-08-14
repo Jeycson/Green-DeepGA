@@ -26,34 +26,42 @@ CLASS_NAMES = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', '
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ejecución local de DeepGA con ExperimentManager")
-    parser.add_argument("--variant", type=str, default="mo_v11", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "mo_v9", "mo_v10", "mo_v11"],
-                        help="Variante de DeepGA a ejecutar (por defecto: mo_v11)")
+    parser.add_argument("--variant", type=str, default="v12", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "mo_v9", "mo_v10", "mo_v11"],
+                        help="Variante de DeepGA a ejecutar (por defecto: v12)")
     parser.add_argument("--execution", type=int, default=1,
                         help="Número identificador de la ejecución (por defecto: 1)")
     parser.add_argument("--pop-size", type=int, default=12,
                         help="Tamaño de la población N total (por defecto: 12)")
-    parser.add_argument("--generations", type=int, default=5,
-                        help="Número de generaciones T (por defecto: 5)")
+    parser.add_argument("--generations", type=int, default=15,
+                        help="Número de generaciones T (por defecto: 15)")
     parser.add_argument("--train-epochs", type=int, default=2,
                         help="Épocas de entrenamiento por individuo en el GA (por defecto: 2)")
     parser.add_argument("--final-epochs", type=int, default=10,
                         help="Épocas de entrenamiento final para el modelo ganador (por defecto: 10)")
-    parser.add_argument("--batch-size", type=int, default=64,
-                        help="Tamaño del lote / batch size (por defecto: 64)")
+    parser.add_argument("--batch-size", type=int, default=32,
+                        help="Tamaño del lote / batch size (por defecto: 32)")
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Tasa de aprendizaje (por defecto: 1e-4)")
     parser.add_argument("--w", type=float, default=0.3,
                         help="Peso de penalización por parámetros (por defecto: 0.3)")
     parser.add_argument("--n-islands", type=int, default=3,
-                        help="Número de islas evolutivas independientes para V11 (por defecto: 3)")
-    parser.add_argument("--migration-interval", type=int, default=10,
-                        help="Intervalo de generaciones para migración en V11 (por defecto: 10)")
-    parser.add_argument("--migration-size", type=int, default=2,
-                        help="Número de individuos que migran por isla en V11 (por defecto: 2)")
+                        help="Número de islas evolutivas independientes para V11/V12 (por defecto: 3)")
+    parser.add_argument("--migration-interval", type=int, default=12,
+                        help="Intervalo de generaciones para migración en V11/V12 (por defecto: 12)")
+    parser.add_argument("--migration-size", type=int, default=1,
+                        help="Número de individuos que migran por isla en V11/V12 (por defecto: 1)")
+    parser.add_argument("--target-diversity", type=float, default=0.25,
+                        help="Umbral objetivo de diversidad estructural intra-isla (por defecto: 0.25)")
+    parser.add_argument("--stagnation-limit", type=int, default=4,
+                        help="Límite de generaciones sin mejora antes de anti-estancamiento (por defecto: 4)")
+    parser.add_argument("--use-amp", action="store_true", default=True,
+                        help="Activa Mixed Precision FP16 para reducir el uso de VRAM a la mitad (por defecto: True)")
+    parser.add_argument("--max-spatial-size", type=int, default=4,
+                        help="Tope de dimensión espacial antes de Linear para evitar explosión de pesos (por defecto: 4)")
     parser.add_argument("--data-root", type=str, default="./data",
                         help="Ruta local donde se almacena CIFAR-10 o dataset personalizado (ej. ./dataset/covid)")
     parser.add_argument("--img-size", type=int, default=64,
-                        help="Resolución de las imágenes (por defecto: 64)")
+                        help="Resolución de las imágenes (por defecto: 64; probado en 128, 256)")
     parser.add_argument("--in-channels", type=int, default=3, choices=[1, 3],
                         help="Número de canales de entrada (3 para RGB, 1 para Grayscale)")
     parser.add_argument("--chck-dir", type=str, default="./checkpoints/",
