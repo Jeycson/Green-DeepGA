@@ -8,7 +8,7 @@ parameterFile = "parameters.txt"
 # Directorio de ejecución
 execDir = "./"
 
-# Script ejecutable target-runner
+# Script ejecutable target-runner (usar "./target-runner" en Linux/macOS o "./target-runner.bat" en Windows)
 targetRunner = "./target-runner"
 
 # Archivo con las instancias de entrenamiento (Tumour, Tumour_3)

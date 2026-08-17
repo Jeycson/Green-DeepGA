@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Script de Auto-diagnóstico y Prueba para el Target-Runner de irace.
-Ejecuta una prueba rápida de 1 generación con DeepGA para verificar que:
-1. PyTorch y las librerías necesarias estén instaladas.
-2. Los datasets Tumour y Tumour_3 sean localizados correctamente.
-3. Las variantes V10, V11 y V12 funcionen sin errores de memoria o ejecución.
-4. El target-runner retorne el costo numérico exacto que espera irace.
+Compatible con Windows (PowerShell/CMD) y Linux/macOS (Bash).
 """
 
 import os
@@ -15,9 +11,11 @@ from pathlib import Path
 
 DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = DIR.parent
+IS_WINDOWS = sys.platform.startswith("win")
 
 print("=" * 65)
 print("  DIAGNÓSTICO Y TEST DE COMPATIBILIDAD IRACE + DEEPGA")
+print(f"  Sistema Operativo: {sys.platform.upper()} | Python: {sys.version.split()[0]}")
 print("=" * 65)
 
 # 1. Comprobar imports clave
@@ -50,42 +48,74 @@ for d_name in ["Tumour", "Tumour_3"]:
         print(f"   ⚠️  Dataset '{d_name}' no encontrado automáticamente (probó en '{resolved}').")
         print("      Puede definir la variable DEEPGA_DATA_DIR=/ruta/a/Datasets o colocarlos en ./dataset/")
 
-# 3. Comprobar permisos del target-runner
+# 3. Comprobar ejecutable target-runner según el Sistema Operativo
 print("\n3. Verificando ejecutable 'target-runner'...")
-tr_path = DIR / "target-runner"
-if tr_path.exists():
-    is_exec = os.access(tr_path, os.X_OK)
-    print(f"   ✓ Archivo target-runner existe. Permisos de ejecución: {'SÍ' if is_exec else 'NO'}")
-    if not is_exec:
-        print("   Aplicando chmod +x target-runner...")
-        os.chmod(tr_path, 0o755)
+if IS_WINDOWS:
+    tr_path = DIR / "target-runner.bat"
+    if not tr_path.exists():
+        tr_path = DIR / "target-runner"
+    print(f"   ✓ Script detectado para Windows: {tr_path.name}")
 else:
-    print("   ❌ target-runner no existe.")
-    sys.exit(1)
+    tr_path = DIR / "target-runner"
+    if tr_path.exists():
+        is_exec = os.access(tr_path, os.X_OK)
+        print(f"   ✓ Archivo target-runner existe. Permisos de ejecución: {'SÍ' if is_exec else 'NO'}")
+        if not is_exec:
+            print("   Aplicando chmod +x target-runner...")
+            os.chmod(tr_path, 0o755)
+    else:
+        print("   ❌ target-runner no existe.")
+        sys.exit(1)
 
-# 4. Prueba rápida de target-runner (1 evaluación seca)
+# 4. Prueba rápida de target-runner (1 evaluación seca con V12, 1 generación)
 print("\n4. Ejecutando simulación de llamada irace (Dry Run - V12, 1 generación)...")
 test_cmd = [
-    str(tr_path),
-    "1", "1", "42", "Tumour",
-    "--variant", "v12",
-    "--generations", "1",
-    "--pop-size", "4",
-    "--train-epochs", "1",
-    "--lr", "0.001",
-    "--w", "0.05",
-    "--batch-size", "32"
+    str(tr_path) if not IS_WINDOWS or str(tr_path).endswith(".bat") else sys.executable,
 ]
 
+if IS_WINDOWS and not str(tr_path).endswith(".bat"):
+    test_cmd.extend([
+        str(DIR / "runner_deepga.py"),
+        "--instance", "Tumour",
+        "--seed", "42",
+        "--config-id", "1",
+        "--instance-id", "1",
+        "--variant", "v12",
+        "--generations", "1",
+        "--pop-size", "4",
+        "--train-epochs", "1",
+        "--lr", "0.001",
+        "--w", "0.05",
+        "--batch-size", "32"
+    ])
+else:
+    test_cmd.extend([
+        "1", "1", "42", "Tumour",
+        "--variant", "v12",
+        "--generations", "1",
+        "--pop-size", "4",
+        "--train-epochs", "1",
+        "--lr", "0.001",
+        "--w", "0.05",
+        "--batch-size", "32"
+    ])
+
 try:
-    res = subprocess.run(test_cmd, capture_ok=True if hasattr(subprocess, 'capture_ok') else False,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+    # Subprocess execution limpio y compatible multiplataforma
+    res = subprocess.run(
+        test_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=180,
+        shell=IS_WINDOWS
+    )
     stdout_clean = res.stdout.strip()
     last_line = stdout_clean.split("\n")[-1] if stdout_clean else ""
-    
+
     print(f"   Código de salida: {res.returncode}")
     print(f"   Salida STDOUT recibida: '{last_line}'")
-    
+
     try:
         cost = float(last_line)
         print(f"   ✓ Costo numérico parseado con éxito: {cost:.6f} (Accuracy estimada: {(1.0 - cost)*100:.2f}%)")
@@ -94,8 +124,10 @@ try:
         print("=" * 65)
     except ValueError:
         print(f"   ⚠️  La salida final no fue un flotante válido: '{last_line}'")
-        print(f"   STDOUT completo:\n{res.stdout}")
-        print(f"   STDERR completo:\n{res.stderr}")
-        
+        if res.stdout:
+            print(f"   STDOUT:\n{res.stdout}")
+        if res.stderr:
+            print(f"   STDERR:\n{res.stderr}")
+
 except Exception as e:
-    print(f"   ⚠️  No se pudo completar la simulación: {e}")
+    print(f"   ⚠️  Error durante la ejecución del test: {e}")
