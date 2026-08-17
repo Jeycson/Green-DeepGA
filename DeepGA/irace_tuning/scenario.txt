@@ -1,0 +1,38 @@
+# ==============================================================================
+# Configuración del Escenario de irace para DeepGA
+# ==============================================================================
+
+# Archivo con la definición de parámetros
+parameterFile = "parameters.txt"
+
+# Directorio de ejecución
+execDir = "./"
+
+# Script ejecutable target-runner
+targetRunner = "./target-runner"
+
+# Archivo con las instancias de entrenamiento (Tumour, Tumour_3)
+trainInstancesFile = "instances.txt"
+
+# Presupuesto total de experimentos (evaluaciones de candidatos)
+# Ajustable según el tiempo disponible (ej: 100 para prueba rápida, 300 para búsqueda completa)
+maxExperiments = 300
+
+# Paralelismo: número de evaluaciones concurrentes
+# Incrementar si la máquina cuenta con múltiples GPUs o núcleos CPU abundantes
+parallel = 1
+
+# Test estadístico de descarte ('F-test' recomendado para problemas continuos y ML)
+testType = "F-test"
+
+# Semilla para reproducibilidad del tuning
+seed = 42
+
+# Guardado del log de progreso y modelos probabilísticos de irace
+logFile = "irace.Rdata"
+
+# Nivel de detalle
+debugLevel = 0
+
+# Modo elitista activo
+elitist = 1

@@ -1,0 +1,55 @@
+# ==============================================================================
+# Definición del Espacio de Parámetros de DeepGA para irace
+# Variantes evaluadas: v10 (ACO Pheromones), v11 (Multi-Island ACO), v12 (Pure Multi-Island)
+# Optimizado para Datasets de Tumores (Tumour / Tumour_3)
+# ==============================================================================
+
+# --- Variante de Neuroevolución (Solo V10, V11 y V12) ---
+variant                "--variant "                c       (v10, v11, v12)
+
+# --- Hiperparámetros de Entrenamiento & Función Fitness ---
+# w: Peso de penalización de complejidad. Valores bajos (<0.20) priorizan accuracy.
+w                      "--w "                      r       (0.01, 0.20)
+# lr: Tasa de aprendizaje de Adam en escala logarítmica (r,log)
+lr                     "--lr "                     r,log   (0.0001, 0.005)
+# train_epochs: Épocas de entrenamiento por red durante la neuroevolución
+train_epochs           "--train-epochs "           i       (2, 5)
+# batch_size: Tamaño de lote para DataLoader
+batch_size             "--batch-size "             c       (16, 32, 64)
+
+# --- Parámetros Poblacionales & Evolutivos Globales ---
+pop_size               "--pop-size "               i       (8, 20)
+generations            "--generations "            i       (5, 12)
+t_size                 "--t-size "                 i       (2, 4)
+cr                     "--cr "                     r       (0.50, 0.95)
+mr                     "--mr "                     r       (0.20, 0.70)
+mr_min                 "--mr-min "                 r       (0.05, 0.20)
+mr_max                 "--mr-max "                 r       (0.65, 0.95)
+
+# --- Espacio de Búsqueda Arquitectónico ---
+min_conv               "--min-conv "               i       (2, 3)
+max_conv               "--max-conv "               i       (4, 6)
+min_full               "--min-full "               i       (1, 2)
+max_full               "--max-full "               i       (2, 4)
+
+# --- Meta-Modelo Subrogado (Random Forest + UCB) ---
+pool_candidates_factor "--pool-candidates-factor " i       (2, 6)
+kappa                  "--kappa "                  r       (0.05, 0.30)
+
+# ==============================================================================
+# Parámetros Condicionales por Variante
+# ==============================================================================
+
+# --- Específicos para V10 y V11: Matriz de Feromonas ACO ---
+rho                    "--rho "                    r       (0.05, 0.30) | variant %in% c("v10", "v11")
+alpha                  "--alpha "                  r       (0.50, 2.00) | variant %in% c("v10", "v11")
+top_k_ratio            "--top-k-ratio "            r       (0.15, 0.45) | variant %in% c("v10", "v11")
+
+# --- Específicos para V11 y V12: Arquitectura Multi-Isla ---
+n_islands              "--n-islands "              i       (2, 4)       | variant %in% c("v11", "v12")
+migration_interval     "--migration-interval "     i       (4, 12)      | variant %in% c("v11", "v12")
+migration_size         "--migration-size "         i       (1, 2)       | variant %in% c("v11", "v12")
+
+# --- Específicos para V12: Preservación de Diversidad & Anti-Estancamiento ---
+target_diversity       "--target-diversity "       r       (0.15, 0.40) | variant %in% c("v12")
+stagnation_limit       "--stagnation-limit "       i       (2, 6)       | variant %in% c("v12")

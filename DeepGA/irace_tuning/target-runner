@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+###############################################################################
+# target-runner para irace y DeepGA
+#
+# Parámetros recibidos desde irace:
+# $1: ID de la configuración (Candidate ID)
+# $2: ID de la instancia (Instance ID)
+# $3: Semilla aleatoria (Seed)
+# $4: Instancia / Nombre del Dataset (Tumour / Tumour_3)
+# $5+: Parámetros de la configuración generados por irace
+#
+# Retorno:
+# Debe imprimir un único número flotante por STDOUT (el costo a minimizar: 1.0 - accuracy)
+# Retorna código 0 en éxito.
+###############################################################################
+
+TARGET_RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${TARGET_RUNNER_DIR}/.." && pwd)"
+
+mkdir -p "${TARGET_RUNNER_DIR}/irace_logs"
+mkdir -p "${TARGET_RUNNER_DIR}/irace_checkpoints"
+
+# Detección del intérprete de Python (prioriza venv activo o .venv)
+if [ -n "${VIRTUAL_ENV}" ] && [ -x "${VIRTUAL_ENV}/bin/python3" ]; then
+    PYTHON_EXE="${VIRTUAL_ENV}/bin/python3"
+elif [ -x "${PROJECT_ROOT}/.venv/bin/python3" ]; then
+    PYTHON_EXE="${PROJECT_ROOT}/.venv/bin/python3"
+elif command -v python3 &> /dev/null; then
+    PYTHON_EXE="$(command -v python3)"
+elif command -v python &> /dev/null; then
+    PYTHON_EXE="$(command -v python)"
+else
+    echo "1.000000"
+    exit 0
+fi
+
+CONFIG_ID="$1"
+INSTANCE_ID="$2"
+SEED="$3"
+INSTANCE="$4"
+
+if [ -z "${CONFIG_ID}" ] || [ -z "${INSTANCE_ID}" ] || [ -z "${SEED}" ] || [ -z "${INSTANCE}" ]; then
+    echo "1.000000"
+    exit 0
+fi
+
+shift 4
+CONFIG_PARAMS="$*"
+
+RUNNER_SCRIPT="${TARGET_RUNNER_DIR}/runner_deepga.py"
+
+# Ejecutar el runner de Python
+# Redirigir stderr al log general para garantizar que stdout contenga solo números
+RAW_OUTPUT=$("${PYTHON_EXE}" "${RUNNER_SCRIPT}" \
+    --instance "${INSTANCE}" \
+    --seed "${SEED}" \
+    --config-id "${CONFIG_ID}" \
+    --instance-id "${INSTANCE_ID}" \
+    ${CONFIG_PARAMS} 2>> "${TARGET_RUNNER_DIR}/irace_logs/runner_errors.log")
+
+EXIT_CODE=$?
+
+# Extraer únicamente el último número flotante devuelto
+COST=$(echo "${RAW_OUTPUT}" | grep -Eo '^[0-9]+(\.[0-9]+)?' | tail -n 1)
+
+if [ -z "${COST}" ]; then
+    echo "1.000000"
+else
+    echo "${COST}"
+fi
+
+exit 0
