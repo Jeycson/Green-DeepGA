@@ -268,11 +268,9 @@ def main():
     except Exception as e:
         # En caso de error, capturar traceback en el log y devolver costo penalizado 1.0
         sys.stdout = original_stdout
-        sys.stderr = original_stderr
         with open(log_file_path, "a", encoding="utf-8") as log_file:
             log_file.write(f"\n❌ EXCEPCIÓN DURANTE EJECUCIÓN:\n{traceback.format_exc()}\n")
-        original_stderr.write(f"Error en runner_deepga: {str(e)}\n")
-        # Imprimir peor costo para que irace no se detenga
+        # Imprimir únicamente el costo penalizado para irace
         print("1.000000")
         sys.exit(0)
     finally:

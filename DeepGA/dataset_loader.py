@@ -29,6 +29,16 @@ except ImportError:
     SKLEARN_AVAILABLE = False
 
 
+def _convert_to_rgb(img):
+    """Función de nivel superior serializable con pickle para PyTorch DataLoader en Windows."""
+    return img.convert('RGB')
+
+
+def _identity(x):
+    """Función identidad serializable con pickle."""
+    return x
+
+
 class FastGPUDatasetWrapper:
     """Wrapper para retornar la cantidad total de muestras en dataset_dl.dataset."""
     def __init__(self, num_samples: int):
@@ -93,6 +103,9 @@ def get_custom_imagefolder_loaders(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    if num_workers > 0 and (os.name == 'nt' or sys.platform.startswith('win')):
+        num_workers = 0
+
     if not os.path.exists(data_dir):
         raise FileNotFoundError(f"Directorio de dataset no encontrado: '{data_dir}'")
 
@@ -116,7 +129,7 @@ def get_custom_imagefolder_loaders(
     else:
         # RGB (3 canales)
         train_transforms = transforms.Compose([
-            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Lambda(_convert_to_rgb),
             transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(degrees=10),
@@ -125,7 +138,7 @@ def get_custom_imagefolder_loaders(
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         eval_transforms = transforms.Compose([
-            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Lambda(_convert_to_rgb),
             transforms.Resize((img_size, img_size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -259,6 +272,9 @@ def get_presplit_imagefolder_loaders(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    if num_workers > 0 and (os.name == 'nt' or sys.platform.startswith('win')):
+        num_workers = 0
+
     train_dir = os.path.join(data_dir, train_subdir)
     test_dir = os.path.join(data_dir, test_subdir)
 
@@ -285,7 +301,7 @@ def get_presplit_imagefolder_loaders(
         ])
     else:
         train_transforms = transforms.Compose([
-            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Lambda(_convert_to_rgb),
             transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(degrees=10),
@@ -294,7 +310,7 @@ def get_presplit_imagefolder_loaders(
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         eval_transforms = transforms.Compose([
-            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Lambda(_convert_to_rgb),
             transforms.Resize((img_size, img_size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -548,7 +564,7 @@ def get_custom_imagefolder_2split_loaders(
         ])
     else:
         train_transforms = transforms.Compose([
-            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Lambda(_convert_to_rgb),
             transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(degrees=10),
@@ -557,7 +573,7 @@ def get_custom_imagefolder_2split_loaders(
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         eval_transforms = transforms.Compose([
-            transforms.Lambda(lambda img: img.convert('RGB')),
+            transforms.Lambda(_convert_to_rgb),
             transforms.Resize((img_size, img_size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -686,7 +702,7 @@ def load_dataset_2split(
             ])
         else:
             train_tf = transforms.Compose([
-                transforms.Lambda(lambda img: img.convert('RGB')),
+                transforms.Lambda(_convert_to_rgb),
                 transforms.Resize((img_size, img_size)),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomRotation(degrees=10),
@@ -695,7 +711,7 @@ def load_dataset_2split(
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
             val_tf = transforms.Compose([
-                transforms.Lambda(lambda img: img.convert('RGB')),
+                transforms.Lambda(_convert_to_rgb),
                 transforms.Resize((img_size, img_size)),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -753,7 +769,7 @@ def load_dataset_2split(
             ])
         else:
             tf_train_list = [transforms.RandomHorizontalFlip(p=0.5), transforms.RandomCrop(32, padding=4) if img_size == 32 else transforms.Resize((img_size, img_size)), transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
-            tf_val_list = [transforms.Resize((img_size, img_size)) if img_size != 32 else transforms.Lambda(lambda x: x), transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+            tf_val_list = [transforms.Resize((img_size, img_size)) if img_size != 32 else transforms.Lambda(_identity), transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
             transform_train = transforms.Compose(tf_train_list)
             transform_val = transforms.Compose(tf_val_list)
 
