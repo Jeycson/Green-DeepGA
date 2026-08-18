@@ -33,7 +33,7 @@ if (!exists("iraceResults")) {
 }
 
 # 1. Obtener configuraciones de élite
-elites <- get_elite_configurations(iraceResults)
+elites <- getFinalElites(iraceResults)
 cat(sprintf("🏆 Total de configuraciones élite finales: %d\n\n", nrow(elites)))
 
 cat("--- TABLA RESUMEN DE CONFIGURACIONES ÉLITE ---\n")

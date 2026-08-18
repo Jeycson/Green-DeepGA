@@ -57,7 +57,7 @@ cat("🏆 CONFIGURACIONES ÉLITE ENCONTRADAS POR IRACE:\n")
 cat("----------------------------------------------------------------------\n")
 
 # Obtener configuraciones de élite finales
-elite_configs <- get_elite_configurations(irace_results)
+elite_configs <- getFinalElites(irace_results)
 print(elite_configs)
 
 # Extraer la mejor configuración individual (#1)
