@@ -4,13 +4,14 @@ rem target-runner para irace y DeepGA (Windows Batch)
 rem ===========================================================================
 setlocal enabledelayedexpansion
 
-set TARGET_RUNNER_DIR=%~dp0
-set PROJECT_ROOT=%TARGET_RUNNER_DIR%..
+set "TARGET_RUNNER_DIR=%~dp0"
+set "PROJECT_ROOT=%TARGET_RUNNER_DIR%.."
 
-if not exist "%TARGET_RUNNER_DIR%irace_logs" mkdir "%TARGET_RUNNER_DIR%irace_logs"
-if not exist "%TARGET_RUNNER_DIR%irace_checkpoints" mkdir "%TARGET_RUNNER_DIR%irace_checkpoints"
+rem Crear directorios de logs si no existen
+if not exist "%TARGET_RUNNER_DIR%irace_logs" mkdir "%TARGET_RUNNER_DIR%irace_logs" >nul 2>nul
+if not exist "%TARGET_RUNNER_DIR%irace_checkpoints" mkdir "%TARGET_RUNNER_DIR%irace_checkpoints" >nul 2>nul
 
-rem Detección de intérprete de Python
+rem Detección de Python (prioriza venv activo o .venv en la raíz)
 set "PYTHON_EXE=python"
 if defined VIRTUAL_ENV (
     if exist "%VIRTUAL_ENV%\Scripts\python.exe" (
@@ -43,14 +44,6 @@ shift
 goto parse_args
 
 :execute_runner
-for /f "tokens=*" %%a in ('"%PYTHON_EXE%" "%TARGET_RUNNER_DIR%runner_deepga.py" --instance "%INSTANCE%" --seed %SEED% --config-id "%CONFIG_ID%" --instance-id "%INSTANCE_ID%" %PARAMS% 2^>^> "%TARGET_RUNNER_DIR%irace_logs\runner_errors.log"') do (
-    set "COST=%%a"
-)
-
-if "%COST%"=="" (
-    echo 1.000000
-) else (
-    echo %COST%
-)
+"%PYTHON_EXE%" "%TARGET_RUNNER_DIR%runner_deepga.py" --instance "%INSTANCE%" --seed %SEED% --config-id "%CONFIG_ID%" --instance-id "%INSTANCE_ID%" %PARAMS%
 
 exit /b 0
