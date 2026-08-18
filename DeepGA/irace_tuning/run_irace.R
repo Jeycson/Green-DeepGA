@@ -24,6 +24,13 @@ if (!file.exists(scenario_file)) {
 
 scenario <- readScenario(filename = scenario_file)
 
+# Adaptación automática del target-runner según el sistema operativo
+if (.Platform$OS.type == "windows") {
+  if (file.exists("target-runner.bat")) {
+    scenario$targetRunner <- "./target-runner.bat"
+  }
+}
+
 # Verificar parámetros de entrada
 checkIraceScenario(scenario = scenario)
 

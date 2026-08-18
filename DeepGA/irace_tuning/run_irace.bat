@@ -52,7 +52,7 @@ if %ERRORLEVEL% equ 0 (
 if not defined RSCRIPT_EXE (
     echo.
     echo [ERROR] No se pudo encontrar Rscript.exe automaticamente.
-    echo Por favor indique la ruta a Rscript.exe o abra PowerShell y agregue R a su PATH de usuario.
+    echo Por favor indique la ruta a Rscript.exe o agregue R a su PATH.
     echo.
     pause
     exit /b 1
@@ -68,7 +68,7 @@ rem 2. Crear carpetas de logs y checkpoints
 if not exist "irace_logs" mkdir "irace_logs"
 if not exist "irace_checkpoints" mkdir "irace_checkpoints"
 
-rem 3. Ejecutar irace mediante Rscript
+rem 3. Ejecutar irace mediante el script run_irace.R
 echo.
 echo Iniciando proceso de optimizacion con irace...
 echo Escenario: scenario.txt
@@ -76,13 +76,10 @@ echo Parametros: parameters.txt
 echo Instancias: instances.txt
 echo ----------------------------------------------------------------------
 
-"!RSCRIPT_EXE!" -e "if (!require('irace', quietly=TRUE)) install.packages('irace', repos='https://cloud.r-project.org'); library(irace); s <- readScenario('scenario.txt'); irace(scenario=s)"
+"!RSCRIPT_EXE!" run_irace.R
 
 echo.
 echo ======================================================================
-echo  Optimizacion de irace finalizada.
-echo  Los resultados se han guardado en: irace.Rdata
-echo  Para analizar las configuraciones ganadoras ejecute:
-echo    analyze_results.bat  (o Rscript analyze_results.R)
+echo  Proceso de irace finalizado.
 echo ======================================================================
 pause
