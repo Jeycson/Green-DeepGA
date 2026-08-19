@@ -34,8 +34,8 @@ def parse_args():
                         help="Semilla aleatoria / ID de ejecución (por defecto: igual a --execution)")
     parser.add_argument("--pop-size", type=int, default=12,
                         help="Tamaño de la población N total (por defecto: 12)")
-    parser.add_argument("--generations", type=int, default=15,
-                        help="Número de generaciones T (por defecto: 15)")
+    parser.add_argument("--generations", type=int, default=5,
+                        help="Número de generaciones T (por defecto: 5)")
     parser.add_argument("--train-epochs", type=int, default=2,
                         help="Épocas de entrenamiento por individuo en el GA (por defecto: 2)")
     parser.add_argument("--final-epochs", type=int, default=10,
