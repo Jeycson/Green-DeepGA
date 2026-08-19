@@ -29,7 +29,11 @@ from model_utils import (
     generate_confusion_matrix as util_generate_confusion_matrix,
     plot_pareto_frontier,
     download_file,
-    download_all_models_zip
+    download_all_models_zip,
+    calculate_cnn_metrics,
+    compute_classification_metrics,
+    format_experiment_row,
+    save_experiment_record
 )
 from dataset_loader import load_dataset_auto, get_custom_imagefolder_loaders, load_dataset_2split
 
@@ -201,13 +205,19 @@ def save_experiment_report_txt(metrics_summary: dict, chck_dir: str = "./checkpo
     os.makedirs(chck_dir, exist_ok=True)
     variant = str(metrics_summary.get("variant", "UNKNOWN")).lower()
     execution = metrics_summary.get("execution", 1)
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
 
     if custom_filename is None:
-        filename = f"reporte_experimento_{variant}_exec_{execution}.txt"
+        filename = f"reporte_experimento_{variant}_exec_{execution}_{timestamp}.txt"
     else:
         filename = custom_filename
 
     filepath = os.path.join(chck_dir, filename)
+    counter = 1
+    while os.path.exists(filepath):
+        name_root, ext = os.path.splitext(filename)
+        filepath = os.path.join(chck_dir, f"{name_root}_{counter}{ext}")
+        counter += 1
 
     now_str = time.strftime("%Y-%m-%d %H:%M:%S")
     lines = []
@@ -509,6 +519,22 @@ class ExperimentManager:
         print(f"Iniciando ejecución de DeepGA (Variante: {variant.upper()})...", flush=True)
         print("=" * 50, flush=True)
         
+        # Determinar nombre descriptivo del dataset
+        if data_root:
+            dr_lower = str(data_root).lower()
+            if "cifar" in dr_lower or data_root == "./data":
+                dataset_name = "CIFAR-10"
+            elif "tumour_3" in dr_lower or "tumours_3" in dr_lower:
+                dataset_name = "Tumours_3"
+            elif "tumour" in dr_lower or "tumours" in dr_lower:
+                dataset_name = "Tumours"
+            elif "covid" in dr_lower:
+                dataset_name = "COVID-19"
+            else:
+                dataset_name = os.path.basename(os.path.abspath(data_root)) or "CustomDataset"
+        else:
+            dataset_name = "CIFAR-10"
+
         common_args = dict(
             execution=execution,
             memoryC=memoryC,
@@ -532,7 +558,11 @@ class ExperimentManager:
             n_channels=in_channels,
             n_classes=n_classes,
             out_size=out_size,
-            loss_func=loss_func
+            loss_func=loss_func,
+            dataset_name=dataset_name,
+            test_dl=test_dl,
+            seed=execution,
+            save_txt=False
         )
 
         pruned_stats = None
@@ -718,6 +748,17 @@ class ExperimentManager:
             except Exception:
                 final_test_acc = None
 
+        # Evaluación de métricas completas de clasificación (Test Acc, Precision, Recall, F1)
+        eval_model = trained_final_model if trained_final_model is not None else cnn_metrics.get("model")
+        target_eval_dl = test_dl if test_dl is not None else val_dl
+        cls_metrics = compute_classification_metrics(eval_model, target_eval_dl, device=device)
+
+        if final_test_acc is None and test_dl is not None:
+            final_test_acc = cls_metrics["accuracy"]
+        precision_val = cls_metrics["precision"]
+        recall_val = cls_metrics["recall"]
+        f1_val = cls_metrics["f1"]
+
         # 7. Guardar y/o descargar automáticamente el mejor modelo
         saved_model_path = None
         if save_best_model_file:
@@ -743,8 +784,43 @@ class ExperimentManager:
         val_acc = bestind[1] if is_mo else bestind[2]
         fit_val = mo_stats.get("final_hypervolume", bestind[1]) if (is_mo and mo_stats) else bestind[1]
 
+        # Conteo de evaluaciones GPU
+        if surrogate_stats is not None and "total_gpu_evaluations" in surrogate_stats:
+            evals_count = surrogate_stats["total_gpu_evaluations"]
+        elif pruned_stats is not None and "total_candidates_checked" in pruned_stats:
+            evals_count = pruned_stats["total_candidates_checked"]
+        else:
+            evals_count = len(final_pop) + (generations * len(final_pop) // 2)
+
+        # Identificación del método y migración
+        var_upper = variant.upper()
+        if var_upper in ["V1", "DEEPGA"]:
+            method_display = "DeepGA"
+            mig_display = "N/A"
+        elif var_upper in ["V10", "DEEPGA_V10"]:
+            method_display = "DeepGA_V10"
+            mig_display = "N/A"
+        elif var_upper in ["V11", "DEEPGA_V11"]:
+            method_display = "DeepGA_V11"
+            mig_display = f"{migration_interval}/{migration_size}"
+        elif var_upper in ["V12", "DEEPGA_V12"]:
+            method_display = "DeepGA_V12"
+            mig_display = f"{migration_interval}/{migration_size}"
+        elif var_upper.startswith("MO"):
+            method_display = f"MODeepGA_{var_upper.replace('MO_', '').replace('MO', '')}"
+            mig_display = f"{migration_interval}/{migration_size}" if "11" in var_upper else "N/A"
+        else:
+            method_display = f"DeepGA_{var_upper}"
+            mig_display = "N/A"
+
+        pop_count = population_size
+        if variant.lower() in ["v11", "v12", "mo_v11"]:
+            pop_count = max(4, population_size // n_islands) * n_islands
+
         metrics_summary = {
             "variant": variant.upper(),
+            "method_name": method_display,
+            "dataset_name": dataset_name,
             "execution": execution,
             "is_multiobjective": is_mo,
             "hardware_device": device_str,
@@ -755,6 +831,9 @@ class ExperimentManager:
             "best_accuracy": val_acc,
             "best_val_accuracy": val_acc,
             "final_test_accuracy": final_test_acc,
+            "precision": precision_val,
+            "recall": recall_val,
+            "f1": f1_val,
             "best_fitness": fit_val,
             "best_total_params": cnn_metrics["total_params"],
             "best_trainable_params": cnn_metrics["trainable_params"],
@@ -763,6 +842,8 @@ class ExperimentManager:
             "conv_layers_count": cnn_metrics["conv_layers"],
             "fc_layers_count": cnn_metrics["fc_layers"],
             "skip_connections_count": cnn_metrics["skip_connections"],
+            "evaluations": evals_count,
+            "migration_info": mig_display,
             "saved_model_path": saved_model_path,
             "history_dataframe": results_df,
             "best_individual_raw": bestind,
@@ -783,7 +864,6 @@ class ExperimentManager:
             metrics_summary["knee_point_individual"] = mo_stats.get("knee_point_individual", bestind)
             metrics_summary["mo_stats"] = mo_stats
 
-
         if pruned_stats is not None:
             metrics_summary["pruning_metrics"] = {
                 "total_candidates_checked": pruned_stats.get("total_candidates_checked", 0),
@@ -803,7 +883,7 @@ class ExperimentManager:
         if surrogate_stats is not None:
             metrics_summary["surrogate_metrics"] = surrogate_stats
 
-        # 9. Guardar Reporte de Resultados en archivo TXT
+        # 9. Guardar Reporte Detallado de Resultados en archivo TXT
         txt_report_path = None
         if save_txt_report:
             try:
@@ -811,6 +891,34 @@ class ExperimentManager:
                 metrics_summary["txt_report_path"] = txt_report_path
             except Exception as e:
                 print(f"Nota al generar reporte .txt: {e}", flush=True)
+
+        # 10. Guardar Fila de Resultados en Formato Estándar de Experimentación (20 Columnas)
+        # Asegurando que se guarde en archivos individuales con timestamp y acumulativo sin sobreescribir
+        exp_data = {
+            "dataset": dataset_name,
+            "method": method_display,
+            "seed": execution,
+            "gen": generations,
+            "pop": pop_count,
+            "mig": mig_display,
+            "epoch": train_epochs,
+            "time": elapsed_seconds,
+            "energy": energy_kwh,
+            "co2": emissions_g_co2,
+            "fitness": fit_val,
+            "val_acc": val_acc,
+            "test_acc": final_test_acc if final_test_acc is not None else "N/A",
+            "precision": precision_val,
+            "recall": recall_val,
+            "f1": f1_val,
+            "params": cnn_metrics["total_params"],
+            "memory": cnn_metrics["model_size_mb"],
+            "flops": cnn_metrics["estimated_flops"],
+            "evaluations": evals_count
+        }
+
+        record_res = save_experiment_record(exp_data, chck_dir=chck_dir, print_console=True)
+        metrics_summary["experiment_record"] = record_res
 
         print("\n" + "=" * 55, flush=True)
         print("           RESUMEN DE MÉTRICAS DEL EXPERIMENTO", flush=True)

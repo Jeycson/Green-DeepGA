@@ -38,11 +38,13 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Ejecución de DeepGA con Partición en 2 Conjuntos (Train y Validación Solamente)"
     )
-    parser.add_argument("--variant", type=str, default="mo_v11",
-                        choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "mo_v9", "mo_v10", "mo_v11"],
-                        help="Variante de DeepGA a ejecutar (por defecto: mo_v11)")
+    parser.add_argument("--variant", type=str, default="v12",
+                        choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "mo_v9", "mo_v10", "mo_v11"],
+                        help="Variante de DeepGA a ejecutar (por defecto: v12)")
     parser.add_argument("--execution", type=int, default=1,
                         help="Número identificador de la ejecución (por defecto: 1)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Semilla aleatoria / ID de ejecución (por defecto: igual a --execution)")
     parser.add_argument("--pop-size", type=int, default=12,
                         help="Tamaño de la población N total (por defecto: 12)")
     parser.add_argument("--generations", type=int, default=5,
@@ -95,6 +97,11 @@ def main():
     print(f"📌 Checkpoints y Reportes:    {os.path.abspath(args.chck_dir)}", flush=True)
     print("=" * 70 + "\n", flush=True)
 
+    actual_seed = args.seed if args.seed is not None else args.execution
+    torch.manual_seed(actual_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(actual_seed)
+
     # 1. Instanciar el Gestor de Experimentos
     manager = ExperimentManager(
         country_iso_code=args.country_iso,
@@ -105,7 +112,7 @@ def main():
     # Se utiliza use_2split=True para entregar el máximo de imágenes a Train y evaluar en Val
     resultados = manager.run_deepga(
         variant=args.variant,
-        execution=args.execution,
+        execution=actual_seed,
         population_size=args.pop_size,
         generations=args.generations,
         train_epochs=args.train_epochs,

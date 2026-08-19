@@ -18,7 +18,9 @@ import copy
 
 def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader, val_dl:DataLoader,lr: float,
            min_conv: int, max_conv: int, min_full: int, max_full: int, max_params: int, cr: float, mr : float,  
-           N: int, T: int, t_size: int, w: float, device: torch.device, chck_dir: str, n_channels =  int , n_classes=int, out_size = int, loss_func=None):
+           N: int, T: int, t_size: int, w: float, device: torch.device, chck_dir: str, n_channels = int , n_classes=int, out_size = int, loss_func=None,
+           test_dl: DataLoader = None, dataset_name: str = "CIFAR-10", seed: int = None,
+           energy_kwh: float = None, emissions_g_co2: float = None, save_txt: bool = True, **kwargs):
    
   num_epochs = train_epochs #Epochs to train each individual during the GA
   #Defining loss function
@@ -245,7 +247,7 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
 
   # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V1)
   try:
-      from model_utils import save_best_model
+      from model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
       save_best_model(
           variant="v1",
           execution=execution,
@@ -255,8 +257,43 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
           n_classes=n_classes,
           chck_dir=chck_dir
       )
+
+      # Calcular métricas del modelo y de clasificación
+      time_sec = timeit.default_timer() - start
+      cnn_metrics = calculate_cnn_metrics(bestind, n_channels, out_size, n_classes)
+      target_eval_dl = test_dl if test_dl is not None else val_dl
+      cls_metrics = compute_classification_metrics(cnn_metrics["model"], target_eval_dl, device1)
+
+      calc_energy = energy_kwh if energy_kwh is not None else (0.150 * (time_sec / 3600.0))
+      calc_co2 = emissions_g_co2 if emissions_g_co2 is not None else (calc_energy * 430.0)
+
+      exp_data = {
+          "dataset": dataset_name,
+          "method": "DeepGA",
+          "seed": seed if seed is not None else execution,
+          "gen": T,
+          "pop": N,
+          "mig": "N/A",
+          "epoch": num_epochs,
+          "time": time_sec,
+          "energy": calc_energy,
+          "co2": calc_co2,
+          "fitness": leader[1],
+          "val_acc": leader[2],
+          "test_acc": cls_metrics["accuracy"] if test_dl is not None else "N/A",
+          "precision": cls_metrics["precision"],
+          "recall": cls_metrics["recall"],
+          "f1": cls_metrics["f1"],
+          "params": cnn_metrics["total_params"],
+          "memory": cnn_metrics["model_size_mb"],
+          "flops": cnn_metrics["estimated_flops"],
+          "evaluations": evals
+      }
+
+      if save_txt:
+          save_experiment_record(exp_data, chck_dir=chck_dir, print_console=True)
   except Exception as e:
-      print(f"Nota al guardar mejor modelo V1: {e}")
+      print(f"Nota al procesar reporte de experimento DeepGA: {e}")
 
   return results, pop, bestind  
 

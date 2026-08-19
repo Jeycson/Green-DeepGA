@@ -238,7 +238,9 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
                      pool_candidates_factor: int = 4, kappa: float = 0.2,
                      mr_min: float = 0.15, mr_max: float = 0.85,
                      target_diversity: float = 0.25, stagnation_limit: int = 4,
-                     use_amp: bool = True, max_spatial_size: int = 4, **kwargs):
+                     use_amp: bool = True, max_spatial_size: int = 4,
+                     test_dl: DataLoader = None, dataset_name: str = "CIFAR-10", seed: int = None,
+                     energy_kwh: float = None, emissions_g_co2: float = None, save_txt: bool = True, **kwargs):
     """
     Algoritmo DeepGA V12 (Pure Multi-Island Model con Preservación de Diversidad y Optimización de Memoria):
     - n_islands: Cantidad de islas evolutivas independientes (por defecto: 3).
@@ -613,7 +615,7 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
 
     # Guardar automáticamente la arquitectura del mejor modelo de V12
     try:
-        from model_utils import save_best_model
+        from model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
         save_best_model(
             variant="v12",
             execution=execution,
@@ -623,8 +625,43 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
             n_classes=n_classes,
             chck_dir=chck_dir
         )
+
+        # Calcular métricas del modelo y de clasificación
+        time_sec = timeit.default_timer() - start
+        cnn_metrics = calculate_cnn_metrics(bestind, n_channels, out_size, n_classes)
+        target_eval_dl = test_dl if test_dl is not None else val_dl
+        cls_metrics = compute_classification_metrics(cnn_metrics["model"], target_eval_dl, device1)
+
+        calc_energy = energy_kwh if energy_kwh is not None else (0.150 * (time_sec / 3600.0))
+        calc_co2 = emissions_g_co2 if emissions_g_co2 is not None else (calc_energy * 430.0)
+
+        exp_data = {
+            "dataset": dataset_name,
+            "method": "DeepGA_V12",
+            "seed": seed if seed is not None else execution,
+            "gen": T,
+            "pop": total_effective_N,
+            "mig": f"{migration_interval}/{migration_size}",
+            "epoch": num_epochs,
+            "time": time_sec,
+            "energy": calc_energy,
+            "co2": calc_co2,
+            "fitness": bestind[1],
+            "val_acc": bestind[2],
+            "test_acc": cls_metrics["accuracy"] if test_dl is not None else "N/A",
+            "precision": cls_metrics["precision"],
+            "recall": cls_metrics["recall"],
+            "f1": cls_metrics["f1"],
+            "params": cnn_metrics["total_params"],
+            "memory": cnn_metrics["model_size_mb"],
+            "flops": cnn_metrics["estimated_flops"],
+            "evaluations": evals
+        }
+
+        if save_txt:
+            save_experiment_record(exp_data, chck_dir=chck_dir, print_console=True)
     except Exception as e:
-        print(f"Nota al guardar mejor modelo V12: {e}", flush=True)
+        print(f"Nota al guardar mejor modelo V12 / reporte: {e}", flush=True)
 
     return results, all_final_pop, bestind, island_stats
 
