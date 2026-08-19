@@ -33,12 +33,29 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
       os.makedirs(chck_dir)      
 
   '''Initialize population'''
-  # Check if checkpoint is available
-  chkpoint_obj = Path(chck_dir + str(execution) + "_checkpoint.pkl")
-  if chkpoint_obj.exists():
-    print("Re-Initialize population")
-    with open(chck_dir + str(execution) + "_checkpoint.pkl", "rb") as p:
-      values = pickle.load(p)
+  chkpoint_file = os.path.join(chck_dir, f"checkpoint_v1_exec_{execution}.pkl")
+  legacy_chkpoint = os.path.join(chck_dir, f"{execution}_checkpoint.pkl")
+
+  values = None
+  if os.path.exists(chkpoint_file):
+    try:
+      with open(chkpoint_file, "rb") as p:
+        loaded = pickle.load(p)
+      if isinstance(loaded, dict) and 'pop' in loaded and 'islands_pop' not in loaded:
+        values = loaded
+    except Exception:
+      values = None
+  elif os.path.exists(legacy_chkpoint):
+    try:
+      with open(legacy_chkpoint, "rb") as p:
+        loaded = pickle.load(p)
+      if isinstance(loaded, dict) and 'pop' in loaded and 'islands_pop' not in loaded:
+        values = loaded
+    except Exception:
+      values = None
+
+  if values is not None:
+    print("Re-Initialize population (DeepGA V1)")
     start = timeit.default_timer() - values['time']
     pop = values['pop']
     bestAcc = values['bestAcc']
@@ -48,11 +65,11 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
     leader = max(pop, key=lambda x: x[1]) if pop else None
     if t >= T:
       print(f'The maximum number of generations has already been reached ({t}/{T}). Returning best individual from checkpoint.')
-    evals = values['evals']
-    cacheM = values['cacheM']
-    meanfitpop = values['meanfitpop']
-    meanAccpop = values['meanAccpop']
-    meanParpop = values['meanParpop']
+    evals = values.get('evals', 0)
+    cacheM = values.get('cacheM', {})
+    meanfitpop = values.get('meanfitpop', [])
+    meanAccpop = values.get('meanAccpop', [])
+    meanParpop = values.get('meanParpop', [])
   else:
     print('Initialize population')
     start = timeit.default_timer()
@@ -232,7 +249,7 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
                                bestParams=bestParams, t=t, evals=evals,
                                time=time, cacheM=cacheM, meanfitpop=meanfitpop,
                                meanAccpop=meanAccpop, meanParpop=meanParpop)
-    with open(chck_dir + str(execution) + "_checkpoint.pkl", "wb") as p:
+    with open(os.path.join(chck_dir, f"checkpoint_v1_exec_{execution}.pkl"), "wb") as p:
       pickle.dump(current_state, p)
 
     print('Best fitness: ', leader[1])

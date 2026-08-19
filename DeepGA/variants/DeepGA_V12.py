@@ -267,24 +267,42 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
     surrogate = DiversitySurrogatePredictor()
 
     '''Inicialización de Poblaciones Multi-Isla V12'''
-    chkpoint_obj = Path(chck_dir + str(execution) + "_checkpoint.pkl")
-    if chkpoint_obj.exists():
+    chkpoint_file = os.path.join(chck_dir, f"checkpoint_v12_exec_{execution}.pkl")
+    legacy_chkpoint = os.path.join(chck_dir, f"{execution}_checkpoint.pkl")
+
+    values = None
+    if os.path.exists(chkpoint_file):
+        try:
+            with open(chkpoint_file, "rb") as p:
+                loaded = pickle.load(p)
+            if isinstance(loaded, dict) and 'islands_pop' in loaded:
+                values = loaded
+        except Exception:
+            values = None
+    elif os.path.exists(legacy_chkpoint):
+        try:
+            with open(legacy_chkpoint, "rb") as p:
+                loaded = pickle.load(p)
+            if isinstance(loaded, dict) and 'islands_pop' in loaded:
+                values = loaded
+        except Exception:
+            values = None
+
+    if values is not None:
         print(f"Re-Initialize population (DeepGA V12 - {n_islands} Pure Islands | Migration every {migration_interval} gens | Memory-Optimized)", flush=True)
-        with open(chck_dir + str(execution) + "_checkpoint.pkl", "rb") as p:
-            values = pickle.load(p)
         start = timeit.default_timer() - values['time']
         islands_pop = values['islands_pop']
         bestAcc = values['bestAcc']
         bestF = values['bestF']
         bestParams = values['bestParams']
         t = values['t']
-        if t == T:
-            print('The maximum number of generations has been reached. Please run a new execution.', flush=True)
-        evals = values['evals']
-        cacheM = values['cacheM']
-        meanfitpop = values['meanfitpop']
-        meanAccpop = values['meanAccpop']
-        meanParpop = values['meanParpop']
+        if t >= T:
+            print(f'The maximum number of generations ({t}/{T}) has already been reached. Returning best individual from checkpoint.', flush=True)
+        evals = values.get('evals', 0)
+        cacheM = values.get('cacheM', {})
+        meanfitpop = values.get('meanfitpop', [])
+        meanAccpop = values.get('meanAccpop', [])
+        meanParpop = values.get('meanParpop', [])
         evaluated_history = values.get('evaluated_history', [])
         total_screened_candidates = values.get('total_screened_candidates', 0)
         prediction_errors = values.get('prediction_errors', [])
@@ -560,7 +578,7 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
             meanAccpop=meanAccpop,
             meanParpop=meanParpop
         )
-        with open(chck_dir + str(execution) + "_checkpoint.pkl", "wb") as p:
+        with open(os.path.join(chck_dir, f"checkpoint_v12_exec_{execution}.pkl"), "wb") as p:
             pickle.dump(current_state, p)
 
         avg_mae = np.mean(prediction_errors[-10:]) if prediction_errors else 0.0
