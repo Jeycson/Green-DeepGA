@@ -415,6 +415,8 @@ class ExperimentManager:
         mr_min: float = 0.10,
         mr_max: float = 0.85,
         rho: float = 0.10,
+        alpha: float = 0.1,
+        top_k_ratio: float = 0.2,
         n_islands: int = 3,
         migration_interval: int = 12,
         migration_size: int = 1,

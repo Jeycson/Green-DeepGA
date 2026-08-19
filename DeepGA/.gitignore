@@ -8,3 +8,8 @@ carbon_logs/
 *.pkl
 *.png
 *.zip
+*.jpg
+*.jpeg
+*.png
+*.txt
+*.log
