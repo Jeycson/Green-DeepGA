@@ -45,9 +45,9 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
     bestF = values['bestF']
     bestParams = values['bestParams']
     t = values['t']
-    if t == T:
-      print('The maximum number of generations has been reached. Please run a new execution.')
-      leader = max(pop, key = lambda x: x[1])
+    leader = max(pop, key=lambda x: x[1]) if pop else None
+    if t >= T:
+      print(f'The maximum number of generations has already been reached ({t}/{T}). Returning best individual from checkpoint.')
     evals = values['evals']
     cacheM = values['cacheM']
     meanfitpop = values['meanfitpop']
@@ -104,6 +104,8 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
 
       print(fit1, acc1, pars1)
       pop.append([e1, fit1, acc1, pars1])
+
+    leader = max(pop, key=lambda x: x[1]) if pop else None
 
 
   '''Genetic Algorithm'''

@@ -227,9 +227,9 @@ def green_DeepGA_v10(execution: int, memoryC: bool, train_epochs: int, train_dl:
         bestF = values['bestF']
         bestParams = values['bestParams']
         t = values['t']
-        if t == T:
-            print('The maximum number of generations has been reached. Please run a new execution.', flush=True)
-            leader = max(pop, key=lambda x: x[1])
+        leader = max(pop, key=lambda x: x[1]) if pop else None
+        if t >= T:
+            print(f'The maximum number of generations has already been reached ({t}/{T}). Returning best individual from checkpoint.', flush=True)
         evals = values['evals']
         cacheM = values['cacheM']
         meanfitpop = values['meanfitpop']
@@ -306,6 +306,7 @@ def green_DeepGA_v10(execution: int, memoryC: bool, train_epochs: int, train_dl:
         surrogate.train()
         pheromones.deposit(pop, top_k_ratio=top_k_ratio)
         print(f"✓ Modelo Subrogado y Matriz de Feromonas inicializados con {len(surrogate.train_x_history)} arquitecturas.", flush=True)
+        leader = max(pop, key=lambda x: x[1]) if pop else None
 
     '''Genetic Algorithm Asistido por Feromonas (ACO) y Subrogado V10'''
     print('--------------------------------------------', flush=True)
