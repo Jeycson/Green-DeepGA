@@ -8,20 +8,45 @@ Módulo de utilidades para:
 """
 
 import os
+import time
 import shutil
 import zipfile
 import pickle
 import copy
 import numpy as np
-import torch
-import torch.nn as nn
-from torchvision import transforms
-from PIL import Image
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import confusion_matrix, classification_report
 
-from Decoding import decoding, CNN
+try:
+    import torch
+    import torch.nn as nn
+    from torchvision import transforms
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
+try:
+    from PIL import Image
+    IMAGE_AVAILABLE = True
+except ImportError:
+    IMAGE_AVAILABLE = False
+
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    PLT_AVAILABLE = True
+except ImportError:
+    PLT_AVAILABLE = False
+
+try:
+    from sklearn.metrics import confusion_matrix, classification_report
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
+try:
+    from Decoding import decoding, CNN
+    DECODING_AVAILABLE = True
+except ImportError:
+    DECODING_AVAILABLE = False
 
 
 def is_colab() -> bool:
@@ -521,4 +546,375 @@ def plot_pareto_frontier(
 
     plt.show()
     return save_fig_path
+
+
+def calculate_cnn_metrics(bestind: list, in_channels: int, out_size: int, n_classes: int):
+    """
+    Calcula las variables estructurales y computacionales de la CNN generada:
+    - Parámetros totales y entrenables
+    - Tamaño estimado en memoria (MB)
+    - Estimación de FLOPs
+    - Número de capas convolucionales, densas y skip-connections
+    """
+    genome = bestind[0]
+    network = decoding(genome, in_channels, out_size, n_classes)
+    model = CNN(genome, network[0], network[1], network[2])
+
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    model_size_mb = (total_params * 4.0) / (1024.0 * 1024.0)
+
+    # Estimación de FLOPs/MACs
+    macs_est = 0
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            kh, kw = m.kernel_size if isinstance(m.kernel_size, tuple) else (m.kernel_size, m.kernel_size)
+            macs_est += m.out_channels * m.in_channels * kh * kw * 16 * 16
+        elif isinstance(m, nn.Linear):
+            macs_est += m.in_features * m.out_features
+    flops_est = macs_est * 2
+
+    conv_count = sum(1 for m in model.modules() if isinstance(m, nn.Conv2d))
+    fc_count = sum(1 for m in model.modules() if isinstance(m, nn.Linear))
+    skip_count = sum(1 for bit in genome.second_level if bit == 1) if hasattr(genome, "second_level") else 0
+
+    return {
+        "total_params": total_params,
+        "trainable_params": trainable_params,
+        "model_size_mb": round(model_size_mb, 4),
+        "estimated_flops": flops_est,
+        "conv_layers": conv_count,
+        "fc_layers": fc_count,
+        "skip_connections": skip_count,
+        "model": model
+    }
+
+
+def compute_classification_metrics(model, dataloader, device: torch.device = None):
+    """
+    Evalúa un modelo sobre un DataLoader y calcula:
+    - Accuracy (%)
+    - Precision Macro (%)
+    - Recall Macro (%)
+    - F1-Score Macro (%)
+    """
+    if dataloader is None or model is None:
+        return {"accuracy": None, "precision": None, "recall": None, "f1": None}
+
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model.to(device)
+    model.eval()
+
+    y_true = []
+    y_pred = []
+
+    with torch.no_grad():
+        for data in dataloader:
+            if isinstance(data, (list, tuple)):
+                xb, yb = data[0], data[1]
+            elif isinstance(data, dict):
+                xb, yb = data["image"], data["label"]
+            else:
+                continue
+
+            xb = xb.to(device, dtype=torch.float32)
+            xb = _adapt_input_tensor(xb, model)
+            outputs = model(xb)
+            preds = torch.argmax(outputs, dim=1)
+
+            y_pred.extend(preds.cpu().numpy())
+            if torch.is_tensor(yb):
+                y_true.extend(yb.cpu().numpy())
+            else:
+                y_true.extend(yb)
+
+    if len(y_true) == 0:
+        return {"accuracy": None, "precision": None, "recall": None, "f1": None}
+
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+
+    acc = float(np.mean(y_true == y_pred) * 100.0)
+
+    try:
+        from sklearn.metrics import precision_recall_fscore_support
+        prec, rec, f1, _ = precision_recall_fscore_support(
+            y_true, y_pred, average="macro", zero_division=0
+        )
+        prec = float(prec * 100.0)
+        rec = float(rec * 100.0)
+        f1 = float(f1 * 100.0)
+    except Exception:
+        classes = np.unique(np.concatenate([y_true, y_pred]))
+        precs, recs, f1s = [], [], []
+        for c in classes:
+            tp = np.sum((y_pred == c) & (y_true == c))
+            fp = np.sum((y_pred == c) & (y_true != c))
+            fn = np.sum((y_pred != c) & (y_true == c))
+            p = float(tp / (tp + fp)) if (tp + fp) > 0 else 0.0
+            r = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+            f = float((2 * p * r) / (p + r)) if (p + r) > 0 else 0.0
+            precs.append(p)
+            recs.append(r)
+            f1s.append(f)
+        prec = float(np.mean(precs) * 100.0) if precs else acc
+        rec = float(np.mean(recs) * 100.0) if recs else acc
+        f1 = float(np.mean(f1s) * 100.0) if f1s else acc
+
+    return {
+        "accuracy": round(acc, 2),
+        "precision": round(prec, 2),
+        "recall": round(rec, 2),
+        "f1": round(f1, 2)
+    }
+
+
+def format_experiment_row(data: dict) -> dict:
+    """
+    Formatea la fila de experimento con los 20 campos especificados:
+    Dataset    Método    Seed    Gen    Pop    Mig.    Epoch    Time    Energy    CO₂    Fitness    Val Acc    Test Acc    Precision    Recall    F1    Params    Memory    FLOPs    Evaluations
+    """
+    dataset = str(data.get("dataset", "CIFAR-10")).strip()
+    method = str(data.get("method", "DeepGA")).strip()
+    seed = str(data.get("seed", 1)).strip()
+    gen = str(data.get("gen", data.get("generations", 1))).strip()
+    pop = str(data.get("pop", data.get("population", 12))).strip()
+    mig = str(data.get("mig", data.get("migration", "N/A"))).strip()
+    epoch = str(data.get("epoch", data.get("train_epochs", 2))).strip()
+
+    # Time (s)
+    t_val = data.get("time", data.get("execution_time_seconds", 0.0))
+    time_str = f"{float(t_val):.2f}" if isinstance(t_val, (int, float)) else str(t_val)
+
+    # Energy (kWh)
+    e_val = data.get("energy", data.get("energy_consumed_kwh", 0.0))
+    energy_str = f"{float(e_val):.6f}" if isinstance(e_val, (int, float)) else str(e_val)
+
+    # CO2 (g)
+    c_val = data.get("co2", data.get("carbon_emissions_g_co2", 0.0))
+    co2_str = f"{float(c_val):.4f}" if isinstance(c_val, (int, float)) else str(c_val)
+
+    # Fitness
+    f_val = data.get("fitness", data.get("best_fitness", 0.0))
+    fit_str = f"{float(f_val):.4f}" if isinstance(f_val, (int, float)) else str(f_val)
+
+    # Val Acc (%)
+    va_val = data.get("val_acc", data.get("best_val_accuracy", 0.0))
+    if isinstance(va_val, (int, float)):
+        va_float = float(va_val) * 100.0 if float(va_val) <= 1.0 and float(va_val) > 0.0 else float(va_val)
+        val_acc_str = f"{va_float:.2f}"
+    else:
+        val_acc_str = str(va_val)
+
+    # Test Acc (%)
+    ta_val = data.get("test_acc", data.get("final_test_accuracy", None))
+    if ta_val is not None and str(ta_val).lower() not in ["none", "n/a", ""]:
+        ta_float = float(ta_val) * 100.0 if float(ta_val) <= 1.0 and float(ta_val) > 0.0 else float(ta_val)
+        test_acc_str = f"{ta_float:.2f}"
+    else:
+        test_acc_str = "N/A"
+
+    # Precision (%)
+    p_val = data.get("precision", None)
+    if p_val is not None and str(p_val).lower() not in ["none", "n/a", ""]:
+        p_float = float(p_val) * 100.0 if float(p_val) <= 1.0 and float(p_val) > 0.0 else float(p_val)
+        prec_str = f"{p_float:.2f}"
+    else:
+        prec_str = "N/A"
+
+    # Recall (%)
+    r_val = data.get("recall", None)
+    if r_val is not None and str(r_val).lower() not in ["none", "n/a", ""]:
+        r_float = float(r_val) * 100.0 if float(r_val) <= 1.0 and float(r_val) > 0.0 else float(r_val)
+        rec_str = f"{r_float:.2f}"
+    else:
+        rec_str = "N/A"
+
+    # F1 (%)
+    f1_val = data.get("f1", None)
+    if f1_val is not None and str(f1_val).lower() not in ["none", "n/a", ""]:
+        f1_float = float(f1_val) * 100.0 if float(f1_val) <= 1.0 and float(f1_val) > 0.0 else float(f1_val)
+        f1_str = f"{f1_float:.2f}"
+    else:
+        f1_str = "N/A"
+
+    # Params
+    par_val = data.get("params", data.get("best_total_params", 0))
+    params_str = f"{int(par_val):,}" if isinstance(par_val, (int, float)) else str(par_val)
+
+    # Memory (MB)
+    mem_val = data.get("memory", data.get("best_model_size_mb", 0.0))
+    mem_str = f"{float(mem_val):.2f}" if isinstance(mem_val, (int, float)) else str(mem_val)
+
+    # FLOPs
+    fl_val = data.get("flops", data.get("best_estimated_flops", 0))
+    flops_str = f"{int(fl_val):,}" if isinstance(fl_val, (int, float)) else str(fl_val)
+
+    # Evaluations
+    ev_val = data.get("evaluations", data.get("evals", 0))
+    evals_str = str(int(ev_val)) if isinstance(ev_val, (int, float)) else str(ev_val)
+
+    cols = [
+        ("Dataset", dataset, 12, "<"),
+        ("Método", method, 14, "<"),
+        ("Seed", seed, 6, ">"),
+        ("Gen", gen, 5, ">"),
+        ("Pop", pop, 5, ">"),
+        ("Mig.", mig, 8, "^"),
+        ("Epoch", epoch, 6, ">"),
+        ("Time", time_str, 9, ">"),
+        ("Energy", energy_str, 11, ">"),
+        ("CO₂", co2_str, 9, ">"),
+        ("Fitness", fit_str, 8, ">"),
+        ("Val Acc", val_acc_str, 9, ">"),
+        ("Test Acc", test_acc_str, 9, ">"),
+        ("Precision", prec_str, 10, ">"),
+        ("Recall", rec_str, 8, ">"),
+        ("F1", f1_str, 8, ">"),
+        ("Params", params_str, 12, ">"),
+        ("Memory", mem_str, 8, ">"),
+        ("FLOPs", flops_str, 13, ">"),
+        ("Evaluations", evals_str, 11, ">")
+    ]
+
+    header_parts = []
+    row_parts = []
+    tsv_headers = []
+    tsv_values = []
+    raw_dict = {}
+
+    for name, val, width, align in cols:
+        tsv_headers.append(name)
+        tsv_values.append(val)
+        raw_dict[name] = val
+        if align == "<":
+            header_parts.append(f"{name:<{width}}")
+            row_parts.append(f"{val:<{width}}")
+        elif align == ">":
+            header_parts.append(f"{name:>{width}}")
+            row_parts.append(f"{val:>{width}}")
+        else:
+            header_parts.append(f"{name:^{width}}")
+            row_parts.append(f"{val:^{width}}")
+
+    table_header = "  ".join(header_parts)
+    table_row = "  ".join(row_parts)
+    sep_line = "-" * len(table_header)
+    box_line = "=" * len(table_header)
+
+    tsv_header_str = "\t".join(tsv_headers)
+    tsv_row_str = "\t".join(tsv_values)
+
+    return {
+        "table_header": table_header,
+        "table_row": table_row,
+        "sep_line": sep_line,
+        "box_line": box_line,
+        "tsv_header": tsv_header_str,
+        "tsv_row": tsv_row_str,
+        "values_dict": raw_dict
+    }
+
+
+def save_experiment_record(
+    data: dict,
+    chck_dir: str = "./checkpoints/",
+    custom_filename: str = None,
+    print_console: bool = True
+) -> dict:
+    """
+    Guarda y muestra la información del experimento según los 20 campos especificados:
+    Dataset    Método    Seed    Gen    Pop    Mig.    Epoch    Time    Energy    CO₂    Fitness    Val Acc    Test Acc    Precision    Recall    F1    Params    Memory    FLOPs    Evaluations
+
+    Garantiza:
+    1. Archivos individuales únicos con timestamp para evitar sobreescritura.
+    2. Archivo maestro/acumulativo (experiments_summary.txt) que añade cada fila sin sobreescribir.
+    3. Impresión por consola del resumen tabular exacto.
+    """
+    os.makedirs(chck_dir, exist_ok=True)
+    formatted = format_experiment_row(data)
+
+    method_clean = str(data.get("method", "DeepGA")).replace(" ", "_")
+    dataset_clean = str(data.get("dataset", "Dataset")).replace(" ", "_").replace("/", "_")
+    seed_clean = str(data.get("seed", 1))
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+
+    # 1. Nombre de archivo individual único (para no sobreescribir)
+    if custom_filename is None:
+        base_name = f"exp_{method_clean}_{dataset_clean}_seed{seed_clean}_{timestamp}.txt"
+    else:
+        base_name = custom_filename
+
+    individual_path = os.path.join(chck_dir, base_name)
+    counter = 1
+    while os.path.exists(individual_path):
+        name_root, ext = os.path.splitext(base_name)
+        individual_path = os.path.join(chck_dir, f"{name_root}_{counter}{ext}")
+        counter += 1
+
+    # 2. Contenido del archivo individual
+    indiv_lines = [
+        formatted["box_line"],
+        "                     REPORTE DE EXPERIMENTO - GREEN DEEPGA",
+        formatted["box_line"],
+        f"Fecha y Hora:  {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Dataset:       {data.get('dataset', 'N/A')}",
+        f"Método:        {data.get('method', 'N/A')}",
+        f"Semilla:       {data.get('seed', 'N/A')}",
+        formatted["sep_line"],
+        "TABLA DE RESULTADOS DE EXPERIMENTACIÓN:",
+        formatted["sep_line"],
+        formatted["table_header"],
+        formatted["sep_line"],
+        formatted["table_row"],
+        formatted["box_line"],
+        "",
+        "# Formato Tab-Separated Values (TSV) para fácil exportación:",
+        formatted["tsv_header"],
+        formatted["tsv_row"],
+        "",
+        formatted["sep_line"],
+        "DETALLE DE MÉTRICAS OBTENIDAS:",
+        formatted["sep_line"],
+    ]
+
+    for k, v in formatted["values_dict"].items():
+        indiv_lines.append(f"  • {k:<15}: {v}")
+
+    indiv_lines.append(formatted["box_line"])
+
+    with open(individual_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(indiv_lines) + "\n")
+
+    # 3. Guardar / Añadir al archivo maestro acumulativo (experiments_summary.txt)
+    summary_path = os.path.join(chck_dir, "experiments_summary.txt")
+    write_header = not os.path.exists(summary_path) or os.path.getsize(summary_path) == 0
+
+    with open(summary_path, "a", encoding="utf-8") as f:
+        if write_header:
+            f.write(formatted["tsv_header"] + "\n")
+        f.write(formatted["tsv_row"] + "\n")
+
+    # 4. Imprimir por consola
+    if print_console:
+        print("\n" + formatted["box_line"], flush=True)
+        print("                     RESUMEN DE EXPERIMENTACIÓN (GREEN DEEPGA)", flush=True)
+        print(formatted["box_line"], flush=True)
+        print(formatted["table_header"], flush=True)
+        print(formatted["sep_line"], flush=True)
+        print(formatted["table_row"], flush=True)
+        print(formatted["box_line"], flush=True)
+        print(f"📁 Archivo individual del experimento: {os.path.abspath(individual_path)}", flush=True)
+        print(f"📊 Archivo acumulativo de experimentos: {os.path.abspath(summary_path)}", flush=True)
+        print(formatted["box_line"] + "\n", flush=True)
+
+    return {
+        "individual_file": individual_path,
+        "summary_file": summary_path,
+        "formatted_row": formatted["table_row"],
+        "tsv_row": formatted["tsv_row"]
+    }
+
 

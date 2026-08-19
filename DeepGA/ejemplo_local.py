@@ -30,6 +30,8 @@ def parse_args():
                         help="Variante de DeepGA a ejecutar (por defecto: v12)")
     parser.add_argument("--execution", type=int, default=1,
                         help="Número identificador de la ejecución (por defecto: 1)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Semilla aleatoria / ID de ejecución (por defecto: igual a --execution)")
     parser.add_argument("--pop-size", type=int, default=12,
                         help="Tamaño de la población N total (por defecto: 12)")
     parser.add_argument("--generations", type=int, default=15,
@@ -90,6 +92,11 @@ def main():
     print(f"📌 Variante seleccionada:     {args.variant.upper()}", flush=True)
     print("=" * 60 + "\n", flush=True)
 
+    actual_seed = args.seed if args.seed is not None else args.execution
+    torch.manual_seed(actual_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(actual_seed)
+
     # 1. Instanciar el gestor de experimentos
     manager = ExperimentManager(
         country_iso_code=args.country_iso,
@@ -99,7 +106,7 @@ def main():
     # 2. Ejecutar la neuroevolución con entrenamiento y guardado del mejor modelo
     resultados = manager.run_deepga(
         variant=args.variant,
-        execution=args.execution,
+        execution=actual_seed,
         population_size=args.pop_size,
         generations=args.generations,
         train_epochs=args.train_epochs,
