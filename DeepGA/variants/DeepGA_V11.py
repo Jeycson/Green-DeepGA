@@ -232,7 +232,8 @@ def green_DeepGA_v11(execution: int, memoryC: bool, train_epochs: int, train_dl:
     ]
 
     '''Inicialización de Poblaciones Multi-Isla'''
-    chkpoint_file = os.path.join(chck_dir, f"checkpoint_v11_exec_{execution}.pkl")
+    ds_clean = str(dataset_name).lower().replace('-', '').replace('_', '')
+    chkpoint_file = os.path.join(chck_dir, f"checkpoint_v11_{ds_clean}_exec_{execution}.pkl")
     legacy_chkpoint = os.path.join(chck_dir, f"{execution}_checkpoint.pkl")
 
     values = None
@@ -547,7 +548,7 @@ def green_DeepGA_v11(execution: int, memoryC: bool, train_epochs: int, train_dl:
             meanAccpop=meanAccpop,
             meanParpop=meanParpop
         )
-        with open(os.path.join(chck_dir, f"checkpoint_v11_exec_{execution}.pkl"), "wb") as p:
+        with open(os.path.join(chck_dir, f"checkpoint_v11_{ds_clean}_exec_{execution}.pkl"), "wb") as p:
             pickle.dump(current_state, p)
 
         avg_mae = np.mean(prediction_errors[-10:]) if prediction_errors else 0.0

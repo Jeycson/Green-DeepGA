@@ -401,6 +401,7 @@ class ExperimentManager:
     def run_deepga(
         self,
         execution: int = 1,
+        seed: int = None,
         variant: str = "v11",  # "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", o "v11"
         memoryC: bool = True,
         train_epochs: int = 5,
@@ -563,7 +564,7 @@ class ExperimentManager:
             loss_func=loss_func,
             dataset_name=dataset_name,
             test_dl=test_dl,
-            seed=execution,
+            seed=seed if seed is not None else execution,
             save_txt=False
         )
 

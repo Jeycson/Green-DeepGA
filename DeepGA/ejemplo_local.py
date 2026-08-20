@@ -92,10 +92,10 @@ def main():
     print(f"📌 Variante seleccionada:     {args.variant.upper()}", flush=True)
     print("=" * 60 + "\n", flush=True)
 
-    actual_seed = args.seed if args.seed is not None else args.execution
-    torch.manual_seed(actual_seed)
+    seed = args.seed if args.seed is not None else args.execution
+    torch.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(actual_seed)
+        torch.cuda.manual_seed_all(seed)
 
     # 1. Instanciar el gestor de experimentos
     manager = ExperimentManager(
@@ -106,7 +106,8 @@ def main():
     # 2. Ejecutar la neuroevolución con entrenamiento y guardado del mejor modelo
     resultados = manager.run_deepga(
         variant=args.variant,
-        execution=actual_seed,
+        execution=args.execution,
+        seed=seed,
         population_size=args.pop_size,
         generations=args.generations,
         train_epochs=args.train_epochs,
