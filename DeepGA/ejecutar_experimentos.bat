@@ -15,9 +15,9 @@ chcp 65001 >nul
 :: ============================================================================
 
 :: Configuración de Rango de Semillas y Execution Inicial
-set START_SEED=103
-set END_SEED=110
-set START_EXEC=165
+set START_SEED=104
+set END_SEED=109
+set START_EXEC=166
 
 :: Si el usuario pasa argumentos por consola, se pueden sobreescribir:
 :: Ejemplo: ejecutar_experimentos.bat 103 110 165
