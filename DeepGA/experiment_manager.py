@@ -900,7 +900,7 @@ class ExperimentManager:
         exp_data = {
             "dataset": dataset_name,
             "method": method_display,
-            "seed": execution,
+            "seed": seed if seed is not None else execution,
             "gen": generations,
             "pop": pop_count,
             "mig": mig_display,
@@ -922,6 +922,9 @@ class ExperimentManager:
 
         record_res = save_experiment_record(exp_data, chck_dir=chck_dir, print_console=True)
         metrics_summary["experiment_record"] = record_res
+        metrics_summary["raw_values_path"] = record_res.get("individual_values_file")
+        metrics_summary["summary_values_path"] = record_res.get("summary_values_file")
+        metrics_summary["summary_csv_path"] = record_res.get("summary_csv_file")
 
         print("\n" + "=" * 55, flush=True)
         print("           RESUMEN DE MÉTRICAS DEL EXPERIMENTO", flush=True)
@@ -935,6 +938,8 @@ class ExperimentManager:
             print(f" Checkpoint del Modelo:      {saved_model_path}", flush=True)
         if txt_report_path:
             print(f" Reporte TXT Generado:       {os.path.abspath(txt_report_path)}", flush=True)
+        if record_res.get("individual_values_file"):
+            print(f" Archivo SOLO VALORES:       {os.path.abspath(record_res['individual_values_file'])}", flush=True)
         print("-" * 55, flush=True)
         print(" VARIABLES DE LA MEJOR CNN GENERADA:", flush=True)
         print(f"   - Val Accuracy (GA 5k):    {metrics_summary['best_val_accuracy']:.2f}%", flush=True)

@@ -71,6 +71,8 @@ def parse_args():
                         help="Código ISO del país para intensidad de huella de carbono (por defecto: MEX)")
     parser.add_argument("--track-carbon", action="store_true", default=True,
                         help="Activa medición de consumo energético y huella de carbono")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Dispositivo a utilizar: 'cuda', 'cuda:0', 'cpu' o None (auto-detección)")
     parser.add_argument("--no-preload-gpu", action="store_true", default=False,
                         help="Desactiva la precarga completa en VRAM")
     return parser.parse_args()
@@ -79,14 +81,23 @@ def parse_args():
 def main():
     args = parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Detección de dispositivo
+    if args.device is not None:
+        if "cuda" in args.device and not torch.cuda.is_available():
+            print(f"⚠️ ADVERTENCIA: Se especificó --device {args.device} pero CUDA no está disponible en este entorno PyTorch. Usando CPU.")
+            device = torch.device("cpu")
+        else:
+            device = torch.device(args.device)
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     is_multiobjective = args.variant.lower().startswith("mo")
 
     print("\n" + "=" * 70, flush=True)
     print("       DEEPGA - ENTRENAMIENTO Y VALIDACIÓN (PARTICIÓN 2-SPLIT)", flush=True)
     print("        (Más datos asignados a Train | Sin partición de Test)", flush=True)
     print("=" * 70, flush=True)
-    print(f"📌 Dispositivo:               {device}" + (f" ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else " (CPU)"), flush=True)
+    print(f"📌 Dispositivo:               {device}" + (f" ({torch.cuda.get_device_name(0)})" if (device.type == "cuda" and torch.cuda.is_available()) else " (CPU)"), flush=True)
     print(f"📌 Variante Seleccionada:     {args.variant.upper()}", flush=True)
     print(f"📌 Tipo de Optimización:      {'Multi-Objetivo (Precisión vs Carbono)' if is_multiobjective else 'Mono-Objetivo (Fitness ponderado)'}", flush=True)
     print(f"📌 Dataset Origen:            {os.path.abspath(args.data_root)}", flush=True)
@@ -114,6 +125,7 @@ def main():
         variant=args.variant,
         execution=args.execution,
         seed=seed,
+        device=device,
         population_size=args.pop_size,
         generations=args.generations,
         train_epochs=args.train_epochs,

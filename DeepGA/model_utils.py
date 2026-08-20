@@ -13,7 +13,13 @@ import shutil
 import zipfile
 import pickle
 import copy
-import numpy as np
+
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    np = None
+    NUMPY_AVAILABLE = False
 
 try:
     import torch
@@ -743,6 +749,7 @@ def format_experiment_row(data: dict) -> dict:
     # Params
     par_val = data.get("params", data.get("best_total_params", 0))
     params_str = f"{int(par_val):,}" if isinstance(par_val, (int, float)) else str(par_val)
+    params_raw = str(int(par_val)) if isinstance(par_val, (int, float)) else str(par_val)
 
     # Memory (MB)
     mem_val = data.get("memory", data.get("best_model_size_mb", 0.0))
@@ -751,6 +758,7 @@ def format_experiment_row(data: dict) -> dict:
     # FLOPs
     fl_val = data.get("flops", data.get("best_estimated_flops", 0))
     flops_str = f"{int(fl_val):,}" if isinstance(fl_val, (int, float)) else str(fl_val)
+    flops_raw = str(int(fl_val)) if isinstance(fl_val, (int, float)) else str(fl_val)
 
     # Evaluations
     ev_val = data.get("evaluations", data.get("evals", 0))
@@ -807,6 +815,34 @@ def format_experiment_row(data: dict) -> dict:
     tsv_header_str = "\t".join(tsv_headers)
     tsv_row_str = "\t".join(tsv_values)
 
+    # Formatos limpios SOLO VALORES (sin comas en miles, ideal para copiar a Excel / CSV)
+    raw_headers = [
+        "Dataset", "Método", "Seed", "Gen", "Pop", "Mig.", "Epoch",
+        "Time", "Energy", "CO₂", "Fitness", "Val Acc", "Test Acc",
+        "Precision", "Recall", "F1", "Params", "Memory", "FLOPs", "Evaluations"
+    ]
+    raw_values = [
+        dataset, method, seed, gen, pop, mig, epoch,
+        time_str, energy_str, co2_str, fit_str, val_acc_str, test_acc_str,
+        prec_str, rec_str, f1_str, params_raw, mem_str, flops_raw, evals_str
+    ]
+    raw_tsv_header_str = "\t".join(raw_headers)
+    raw_tsv_row_str = "\t".join(raw_values)
+
+    raw_csv_headers = []
+    for h in raw_headers:
+        raw_csv_headers.append(f'"{h}"' if (',' in h or '"' in h) else h)
+    raw_csv_values = []
+    for v in raw_values:
+        v_str = str(v)
+        if ',' in v_str or '"' in v_str or '\n' in v_str:
+            raw_csv_values.append('"' + v_str.replace('"', '""') + '"')
+        else:
+            raw_csv_values.append(v_str)
+
+    raw_csv_header_str = ",".join(raw_csv_headers)
+    raw_csv_row_str = ",".join(raw_csv_values)
+
     return {
         "table_header": table_header,
         "table_row": table_row,
@@ -814,6 +850,12 @@ def format_experiment_row(data: dict) -> dict:
         "box_line": box_line,
         "tsv_header": tsv_header_str,
         "tsv_row": tsv_row_str,
+        "raw_tsv_header": raw_tsv_header_str,
+        "raw_tsv_row": raw_tsv_row_str,
+        "raw_csv_header": raw_csv_header_str,
+        "raw_csv_row": raw_csv_row_str,
+        "raw_headers": raw_headers,
+        "raw_values": raw_values,
         "values_dict": raw_dict
     }
 
@@ -829,9 +871,10 @@ def save_experiment_record(
     Dataset    Método    Seed    Gen    Pop    Mig.    Epoch    Time    Energy    CO₂    Fitness    Val Acc    Test Acc    Precision    Recall    F1    Params    Memory    FLOPs    Evaluations
 
     Garantiza:
-    1. Archivos individuales únicos con timestamp para evitar sobreescritura.
-    2. Archivo maestro/acumulativo (experiments_summary.txt) que añade cada fila sin sobreescribir.
-    3. Impresión por consola del resumen tabular exacto.
+    1. Archivo 1: Reporte individual con formato visual y detalle explicativo.
+    2. Archivo 2: Archivo individual SOLO VALORES (sin texto decorativo), perfecto para copiar y pegar en Excel en 1 paso.
+    3. Archivos maestros acumulativos (experiments_summary.txt, experiments_summary_values.txt y experiments_summary_values.csv).
+    4. Impresión por consola clara con enlaces a todos los archivos generados.
     """
     os.makedirs(chck_dir, exist_ok=True)
     formatted = format_experiment_row(data)
@@ -841,20 +884,30 @@ def save_experiment_record(
     seed_clean = str(data.get("seed", 1))
     timestamp = time.strftime("%Y%m%d_%H%M%S")
 
-    # 1. Nombre de archivo individual único (para no sobreescribir)
+    # 1. Archivo individual detallado con formato
     if custom_filename is None:
         base_name = f"exp_{method_clean}_{dataset_clean}_seed{seed_clean}_{timestamp}.txt"
+        base_values_name = f"exp_{method_clean}_{dataset_clean}_seed{seed_clean}_{timestamp}_values.txt"
+        base_csv_name = f"exp_{method_clean}_{dataset_clean}_seed{seed_clean}_{timestamp}_values.csv"
     else:
         base_name = custom_filename
+        name_root, ext = os.path.splitext(custom_filename)
+        base_values_name = f"{name_root}_values{ext}"
+        base_csv_name = f"{name_root}_values.csv"
 
     individual_path = os.path.join(chck_dir, base_name)
+    individual_values_path = os.path.join(chck_dir, base_values_name)
+    individual_csv_path = os.path.join(chck_dir, base_csv_name)
+
     counter = 1
     while os.path.exists(individual_path):
         name_root, ext = os.path.splitext(base_name)
         individual_path = os.path.join(chck_dir, f"{name_root}_{counter}{ext}")
+        individual_values_path = os.path.join(chck_dir, f"{name_root}_{counter}_values{ext}")
+        individual_csv_path = os.path.join(chck_dir, f"{name_root}_{counter}_values.csv")
         counter += 1
 
-    # 2. Contenido del archivo individual
+    # Contenido del reporte detallado (Archivo 1)
     indiv_lines = [
         formatted["box_line"],
         "                     REPORTE DE EXPERIMENTO - GREEN DEEPGA",
@@ -888,14 +941,37 @@ def save_experiment_record(
     with open(individual_path, "w", encoding="utf-8") as f:
         f.write("\n".join(indiv_lines) + "\n")
 
-    # 3. Guardar / Añadir al archivo maestro acumulativo (experiments_summary.txt)
-    summary_path = os.path.join(chck_dir, "experiments_summary.txt")
-    write_header = not os.path.exists(summary_path) or os.path.getsize(summary_path) == 0
+    # 2. Contenido del archivo SOLO VALORES (Archivo 2 - TSV limpio sin encabezados de texto)
+    # Permite copiar todo el archivo (Ctrl+A, Ctrl+C) y pegarlo directamente en Excel (Ctrl+V) en una sola fila limpia.
+    with open(individual_values_path, "w", encoding="utf-8") as f:
+        f.write(formatted["raw_tsv_row"] + "\n")
 
+    # Guardar también versión CSV individual (encabezado + valores) para abrir directamente
+    with open(individual_csv_path, "w", encoding="utf-8") as f:
+        f.write(formatted["raw_csv_header"] + "\n")
+        f.write(formatted["raw_csv_row"] + "\n")
+
+    # 3. Guardar / Añadir a los archivos maestros acumulativos
+    summary_path = os.path.join(chck_dir, "experiments_summary.txt")
+    write_header_sum = not os.path.exists(summary_path) or os.path.getsize(summary_path) == 0
     with open(summary_path, "a", encoding="utf-8") as f:
-        if write_header:
+        if write_header_sum:
             f.write(formatted["tsv_header"] + "\n")
         f.write(formatted["tsv_row"] + "\n")
+
+    summary_values_path = os.path.join(chck_dir, "experiments_summary_values.txt")
+    write_header_val = not os.path.exists(summary_values_path) or os.path.getsize(summary_values_path) == 0
+    with open(summary_values_path, "a", encoding="utf-8") as f:
+        if write_header_val:
+            f.write(formatted["raw_tsv_header"] + "\n")
+        f.write(formatted["raw_tsv_row"] + "\n")
+
+    summary_csv_path = os.path.join(chck_dir, "experiments_summary_values.csv")
+    write_header_csv = not os.path.exists(summary_csv_path) or os.path.getsize(summary_csv_path) == 0
+    with open(summary_csv_path, "a", encoding="utf-8") as f:
+        if write_header_csv:
+            f.write(formatted["raw_csv_header"] + "\n")
+        f.write(formatted["raw_csv_row"] + "\n")
 
     # 4. Imprimir por consola
     if print_console:
@@ -906,15 +982,23 @@ def save_experiment_record(
         print(formatted["sep_line"], flush=True)
         print(formatted["table_row"], flush=True)
         print(formatted["box_line"], flush=True)
-        print(f"📁 Archivo individual del experimento: {os.path.abspath(individual_path)}", flush=True)
-        print(f"📊 Archivo acumulativo de experimentos: {os.path.abspath(summary_path)}", flush=True)
+        print(f"📄 Reporte detallado (.txt):               {os.path.abspath(individual_path)}", flush=True)
+        print(f"📋 Archivo SOLO VALORES para Excel (.txt):    {os.path.abspath(individual_values_path)}", flush=True)
+        print(f"📊 Resumen acumulativo TSV (.txt):         {os.path.abspath(summary_values_path)}", flush=True)
+        print(f"📊 Resumen acumulativo Excel (.csv):       {os.path.abspath(summary_csv_path)}", flush=True)
         print(formatted["box_line"] + "\n", flush=True)
 
     return {
         "individual_file": individual_path,
+        "individual_values_file": individual_values_path,
+        "individual_csv_file": individual_csv_path,
         "summary_file": summary_path,
+        "summary_values_file": summary_values_path,
+        "summary_csv_file": summary_csv_path,
         "formatted_row": formatted["table_row"],
-        "tsv_row": formatted["tsv_row"]
+        "tsv_row": formatted["tsv_row"],
+        "raw_tsv_row": formatted["raw_tsv_row"],
+        "raw_csv_row": formatted["raw_csv_row"]
     }
 
 

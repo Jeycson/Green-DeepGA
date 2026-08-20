@@ -72,6 +72,8 @@ def parse_args():
                         help="Código ISO del país para tracking de huella de carbono (por defecto: MEX)")
     parser.add_argument("--track-carbon", action="store_true", default=True,
                         help="Activa la medición de huella de carbono (por defecto: True)")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Dispositivo a utilizar: 'cuda', 'cuda:0', 'cpu' o None (auto-detección)")
     parser.add_argument("--no-preload-gpu", action="store_true", default=False,
                         help="Desactiva la precarga completa en VRAM si la GPU tiene memoria muy limitada")
     return parser.parse_args()
@@ -81,11 +83,19 @@ def main():
     args = parse_args()
 
     # Detección de dispositivo
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.device is not None:
+        if "cuda" in args.device and not torch.cuda.is_available():
+            print(f"⚠️ ADVERTENCIA: Se especificó --device {args.device} pero CUDA no está disponible en este entorno PyTorch. Usando CPU.")
+            device = torch.device("cpu")
+        else:
+            device = torch.device(args.device)
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     print("\n" + "=" * 60, flush=True)
     print("      EJECUCIÓN LOCAL DE DEEPGA / EXPERIMENT MANAGER", flush=True)
     print("=" * 60, flush=True)
-    print(f"📌 Dispositivo detectado:    {device}" + (f" ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else " (CPU)"), flush=True)
+    print(f"📌 Dispositivo detectado:    {device}" + (f" ({torch.cuda.get_device_name(0)})" if (device.type == "cuda" and torch.cuda.is_available()) else " (CPU)"), flush=True)
     print(f"📌 Ruta del dataset:         {os.path.abspath(args.data_root)}", flush=True)
     print(f"📌 Resolución / Canales:     {args.img_size}x{args.img_size} | {args.in_channels} canales", flush=True)
     print(f"📌 Directorio de checkpoints: {os.path.abspath(args.chck_dir)}", flush=True)
@@ -108,6 +118,7 @@ def main():
         variant=args.variant,
         execution=args.execution,
         seed=seed,
+        device=device,
         population_size=args.pop_size,
         generations=args.generations,
         train_epochs=args.train_epochs,
@@ -132,19 +143,22 @@ def main():
     # 3. Acceder al modelo guardado y reporte de texto
     ruta_modelo = resultados["saved_model_path"]
     ruta_txt = resultados.get("txt_report_path")
+    ruta_valores = resultados.get("raw_values_path")
     class_names = resultados.get("class_names", CLASS_NAMES)
     print(f"\n✅ Modelo ganador guardado en: {ruta_modelo}", flush=True)
     if ruta_txt:
         print(f"📄 Reporte de experimento (.txt): {os.path.abspath(ruta_txt)}", flush=True)
+    if ruta_valores:
+        print(f"📋 Archivo SOLO VALORES para Excel (.txt): {os.path.abspath(ruta_valores)}", flush=True)
 
     # 4. Generar Matriz de Confusión y Reporte sobre el Test Set independiente
     print("\n📊 Generando Matriz de Confusión sobre el Test Set independiente...", flush=True)
-    save_fig_path = os.path.join(args.chck_dir, f"matriz_confusion_{args.variant.lower()}.png")
+    save_fig_path = os.path.join(args.chck_dir, f"matriz_confusion_{args.variant.lower()}_exec_{args.execution}.png")
     cm, reporte = manager.generate_confusion_matrix(
         model_or_path=ruta_modelo,
         dataloader=resultados["test_dataloader"],
         class_names=class_names,
-        title=f"Matriz de Confusión - DeepGA {resultados['variant']}",
+        title=f"Matriz de Confusión - DeepGA {resultados['variant']} (Exec {args.execution})",
         save_fig_path=save_fig_path,
         auto_download_plot=False
     )
