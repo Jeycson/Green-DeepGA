@@ -21,12 +21,12 @@ import time
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Automatización de experimentos Green DeepGA")
-    parser.add_argument("--start-seed", type=int, default=103,
-                        help="Semilla inicial del primer ciclo (default: 103)")
-    parser.add_argument("--end-seed", type=int, default=110,
-                        help="Semilla final del último ciclo (default: 110)")
-    parser.add_argument("--start-exec", type=int, default=165,
-                        help="Número de execution inicial (default: 165)")
+    parser.add_argument("--start-seed", type=int, default=104,
+                        help="Semilla inicial del primer ciclo (default: 104)")
+    parser.add_argument("--end-seed", type=int, default=109,
+                        help="Semilla final del último ciclo (default: 109)")
+    parser.add_argument("--start-exec", type=int, default=166,
+                        help="Número de execution inicial (default: 166)")
     parser.add_argument("--variants", nargs="+", default=["v1", "v10", "v11", "v12"],
                         help="Variantes a evaluar en cada ciclo (default: v1 v10 v11 v12)")
     parser.add_argument("--data-root", type=str, default="./Datasets/Covid",
