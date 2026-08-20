@@ -78,6 +78,7 @@ def main():
     run_idx = 0
     successful_runs = 0
     failed_runs = 0
+    failed_experiments = []
     start_time_all = time.time()
     
     for seed in range(args.start_seed, args.end_seed + 1):
@@ -116,6 +117,16 @@ def main():
                 print(f"\n✅ [OK] Variante {variant.upper()} finalizada con éxito (Semilla: {seed}, Exec: {current_exec}).", flush=True)
             else:
                 failed_runs += 1
+                cmd_str = " ".join([f'"{c}"' if " " in str(c) else str(c) for c in cmd])
+                failed_item = {
+                    "run_idx": run_idx,
+                    "variant": variant,
+                    "seed": seed,
+                    "execution": current_exec,
+                    "returncode": ret.returncode,
+                    "cmd_str": cmd_str
+                }
+                failed_experiments.append(failed_item)
                 print(f"\n❌ [ERROR] Falló la corrida de {variant.upper()} con Semilla {seed} y Exec {current_exec} (Código: {ret.returncode}).", flush=True)
             
             current_exec += 1
@@ -129,6 +140,17 @@ def main():
     print(f"  Corridas Fallidas:            {failed_runs}", flush=True)
     print(f"  Tiempo Total Transcurrido:    {elapsed_total / 60.0:.2f} minutos", flush=True)
     print(f"  Última Ejecución Utilizada:   {current_exec - 1}", flush=True)
+
+    if failed_experiments:
+        print("\n" + "!" * 76, flush=True)
+        print("  ⚠️ DETALLE DE LOS EXPERIMENTOS QUE FALLARON:", flush=True)
+        print("!" * 76, flush=True)
+        for item in failed_experiments:
+            print(f"  ❌ Corrida #{item['run_idx']}: Variante {item['variant'].upper()} | Semilla: {item['seed']} | Execution: {item['execution']} (Código error: {item['returncode']})", flush=True)
+            print(f"     Comando para re-ejecutar solo este:", flush=True)
+            print(f"     python ejemplo_local.py --execution {item['execution']} --variant {item['variant']} --seed {item['seed']} --data-root {args.data_root} --pop-size {args.pop_size} --generations {args.generations} --in-channels {args.in_channels}\n", flush=True)
+        print("!" * 76, flush=True)
+
     print(f"\n  Archivos generados en: {args.chck_dir}", flush=True)
     print("    - Reportes con texto:             exp_*.txt y reporte_*.txt", flush=True)
     print("    - Reportes SOLO VALORES (Excel):  exp_*_values.txt y exp_*_values.csv", flush=True)
