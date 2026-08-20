@@ -405,6 +405,163 @@ def get_presplit_imagefolder_loaders(
     return train_dl, val_dl, test_dl, in_channels, img_size, n_classes, class_names
 
 
+class MedMNISTDatasetWrapper(torch.utils.data.Dataset):
+    """Wrapper para adaptar datasets de MedMNIST al formato de clasificación de DeepGA."""
+    def __init__(self, raw_ds, transform=None):
+        self.raw_ds = raw_ds
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.raw_ds)
+
+    def __getitem__(self, idx):
+        img, target = self.raw_ds[idx]
+        if self.transform is not None:
+            img = self.transform(img)
+        if isinstance(target, np.ndarray):
+            target = int(target.squeeze())
+        elif isinstance(target, torch.Tensor):
+            target = int(target.squeeze().item())
+        else:
+            target = int(target)
+        return img, target
+
+
+def get_medmnist_loaders(
+    dataset_flag: str = "breastmnist",
+    data_dir: str = "./data",
+    img_size: int = 64,
+    in_channels: int = 1,
+    batch_size: int = 32,
+    num_workers: int = 2,
+    preload_gpu: bool = False,
+    device: torch.device = None,
+    download: bool = True
+):
+    """
+    Carga datasets de MedMNIST (como BreastMNIST, PneumoniaMNIST, DermaMNIST, etc.)
+    con soporte para particiones oficiales (Train/Val/Test), Data Augmentation y GPU VRAM.
+    """
+    try:
+        import medmnist
+        from medmnist import INFO
+    except ImportError:
+        raise ImportError(
+            "El paquete 'medmnist' no está instalado en este entorno Python.\n"
+            "Instálalo ejecutando: pip install medmnist"
+        )
+
+    clean_str = dataset_flag.lower().replace("medmnist/", "").replace("medmnist:", "").strip()
+    base_name = os.path.basename(clean_str)
+
+    selected_flag = None
+    if clean_str in INFO:
+        selected_flag = clean_str
+    elif base_name in INFO:
+        selected_flag = base_name
+    else:
+        for k in INFO:
+            if k in clean_str:
+                selected_flag = k
+                break
+
+    if selected_flag is None:
+        raise ValueError(
+            f"Dataset MedMNIST '{dataset_flag}' no reconocido.\n"
+            f"Datasets disponibles en MedMNIST: {list(INFO.keys())}"
+        )
+
+    info = INFO[selected_flag]
+    DataClass = getattr(medmnist, info['python_class'])
+
+    labels_dict = info.get('label', {})
+    if labels_dict:
+        class_names = [labels_dict[str(i)] for i in range(len(labels_dict))]
+        n_classes = len(labels_dict)
+    else:
+        n_classes = info.get('n_classes', 2)
+        class_names = [f"clase_{i}" for i in range(n_classes)]
+
+    dataset_channels = info.get('n_channels', in_channels)
+    effective_channels = in_channels if in_channels is not None else dataset_channels
+
+    if effective_channels == 1:
+        train_transforms = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+        eval_transforms = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+    else:
+        train_transforms = transforms.Compose([
+            transforms.Lambda(_convert_to_rgb),
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
+        eval_transforms = transforms.Compose([
+            transforms.Lambda(_convert_to_rgb),
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
+
+    download_dir = data_dir if (os.path.exists(data_dir) and os.path.isdir(data_dir)) else "./data"
+    os.makedirs(download_dir, exist_ok=True)
+
+    raw_train = DataClass(split='train', transform=None, download=download, root=download_dir)
+    raw_val = DataClass(split='val', transform=None, download=download, root=download_dir)
+    raw_test = DataClass(split='test', transform=None, download=download, root=download_dir)
+
+    train_ds = MedMNISTDatasetWrapper(raw_train, transform=train_transforms)
+    val_ds = MedMNISTDatasetWrapper(raw_val, transform=eval_transforms)
+    test_ds = MedMNISTDatasetWrapper(raw_test, transform=eval_transforms)
+
+    print(f"\n📂 [MedMNIST] Cargado '{info['python_class']}' ({selected_flag}):", flush=True)
+    print(f"   🏷️  Clases detectadas ({n_classes}): {class_names}", flush=True)
+    print(f"   📐 Dimensiones: {img_size}x{img_size} | Canales: {effective_channels}", flush=True)
+    print(f"   📊 Distribución oficial -> Train: {len(train_ds):,} | Val: {len(val_ds):,} | Test: {len(test_ds):,} imágenes", flush=True)
+
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if num_workers > 0 and (os.name == 'nt' or sys.platform.startswith('win')):
+        num_workers = 0
+
+    if preload_gpu and device.type == "cuda":
+        print(f"   🚀 Precargando dataset completo en VRAM de la GPU ({device})...", flush=True)
+        loader_train_all = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False)
+        loader_val_all = DataLoader(val_ds, batch_size=len(val_ds), shuffle=False)
+        loader_test_all = DataLoader(test_ds, batch_size=len(test_ds), shuffle=False)
+
+        x_train, y_train = next(iter(loader_train_all))
+        x_val, y_val = next(iter(loader_val_all))
+        x_test, y_test = next(iter(loader_test_all))
+
+        train_dl = FastGPULoader(x_train.to(device, dtype=torch.float32), y_train.to(device, dtype=torch.long), batch_size=batch_size, shuffle=True)
+        val_dl = FastGPULoader(x_val.to(device, dtype=torch.float32), y_val.to(device, dtype=torch.long), batch_size=batch_size, shuffle=False)
+        test_dl = FastGPULoader(x_test.to(device, dtype=torch.float32), y_test.to(device, dtype=torch.long), batch_size=batch_size, shuffle=False)
+        print(f"   ✓ MedMNIST ({len(train_ds)+len(val_ds)+len(test_ds)} imágenes) precargado en GPU VRAM.", flush=True)
+    else:
+        use_pin = torch.cuda.is_available() and (device.type == "cuda")
+        train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin)
+        val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin)
+        test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin)
+
+    return train_dl, val_dl, test_dl, effective_channels, img_size, n_classes, class_names
+
+
 def load_dataset_auto(
     data_root: str = "./data",
     img_size: int = 64,
@@ -416,6 +573,8 @@ def load_dataset_auto(
 ):
     """
     Función de detección automática:
+    - Si `data_root` es un dataset de MedMNIST (ej. breastmnist, pneumoniamnist, etc.),
+      utiliza get_medmnist_loaders automáticamente.
     - Si `data_root` contiene subcarpetas con imágenes (como covid, neumonia, normal o tumores),
       utiliza get_custom_imagefolder_loaders.
     - De lo contrario, carga CIFAR-10 con fallback automático.
@@ -427,7 +586,31 @@ def load_dataset_auto(
         print(f"ℹ️  [Memory Optimizer] Resolución alta detectada ({img_size}x{img_size}). Se utiliza DataLoader con Pinned Memory para proteger la VRAM de la GPU.", flush=True)
         preload_gpu = False
 
-    # Verificar si es una carpeta con subdirectorios de clases
+    # 1. Detección de MedMNIST por nombre o prefijo
+    medmnist_candidates = [
+        "breastmnist", "pneumoniamnist", "chestmnist", "dermamnist",
+        "octmnist", "pathmnist", "bloodmnist", "tissuemnist",
+        "organamnist", "organcmnist", "organsmnist", "retinamnist", "synapsemnist"
+    ]
+    data_root_clean = str(data_root).lower().strip()
+    is_medmnist = (
+        data_root_clean.startswith("medmnist") or 
+        any(cand in data_root_clean for cand in medmnist_candidates)
+    ) and not (os.path.exists(data_root) and os.path.isdir(data_root) and len([d for d in os.listdir(data_root) if os.path.isdir(os.path.join(data_root, d)) and not d.startswith(".")]) >= 2)
+
+    if is_medmnist:
+        return get_medmnist_loaders(
+            dataset_flag=data_root,
+            data_dir="./data",
+            img_size=img_size,
+            in_channels=in_channels,
+            batch_size=batch_size,
+            preload_gpu=preload_gpu,
+            device=device,
+            num_workers=num_workers
+        )
+
+    # 2. Verificar si es una carpeta con subdirectorios de clases
     is_custom_folder = False
     is_presplit_folder = False
     if os.path.exists(data_root) and os.path.isdir(data_root):
