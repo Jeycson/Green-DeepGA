@@ -31,8 +31,10 @@ def parse_args():
                         help="Variantes a evaluar en cada ciclo (default: v1 v10 v11 v12)")
     parser.add_argument("--data-root", type=str, default="./Datasets/Covid",
                         help="Ruta al dataset (default: ./Datasets/Covid)")
+    parser.add_argument("--img-size", type=int, default=None,
+                        help="Resolución de las imágenes (default: 28 para MNIST/MedMNIST, 64 para otros)")
     parser.add_argument("--in-channels", type=int, default=1, choices=[1, 3],
-                        help="Canales de entrada: 1 para Grayscale/Covid, 3 para RGB (default: 1)")
+                        help="Canales de entrada: 1 para Grayscale/Covid/BreastMNIST, 3 para RGB (default: 1)")
     parser.add_argument("--pop-size", type=int, default=12,
                         help="Tamaño de la población (default: 12)")
     parser.add_argument("--generations", type=int, default=5,
@@ -57,6 +59,14 @@ def parse_args():
 def main():
     args = parse_args()
     
+    # Auto-detección de tamaño de imagen: 28 para MedMNIST/MNIST o 64 por defecto
+    if args.img_size is not None:
+        effective_img_size = args.img_size
+    elif "mnist" in str(args.data_root).lower():
+        effective_img_size = 28
+    else:
+        effective_img_size = 64
+    
     total_seeds = args.end_seed - args.start_seed + 1
     total_runs = total_seeds * len(args.variants)
     
@@ -67,6 +77,7 @@ def main():
     print(f"📌 Execution Inicial:        {args.start_exec} (incrementa de 1 en 1 por variante)", flush=True)
     print(f"📌 Variantes por Ciclo:      {', '.join(args.variants)}", flush=True)
     print(f"📌 Dataset / Canales:        {args.data_root} | {args.in_channels} canal(es)", flush=True)
+    print(f"📌 Resolución de Imágenes:   {effective_img_size}x{effective_img_size}", flush=True)
     print(f"📌 Población / Generaciones: {args.pop_size} individuos | {args.generations} generaciones", flush=True)
     print(f"📌 Épocas (GA / Final):      {args.train_epochs} épocas | {args.final_epochs} épocas", flush=True)
     print(f"📌 Directorio Checkpoints:   {args.chck_dir}", flush=True)
@@ -98,6 +109,7 @@ def main():
                 "--variant", variant,
                 "--seed", str(seed),
                 "--data-root", args.data_root,
+                "--img-size", str(effective_img_size),
                 "--pop-size", str(args.pop_size),
                 "--generations", str(args.generations),
                 "--in-channels", str(args.in_channels),

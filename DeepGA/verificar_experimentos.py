@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument("--start-exec", type=int, default=166, help="Execution inicial (default: 166)")
     parser.add_argument("--variants", nargs="+", default=["v1", "v10", "v11", "v12"], help="Variantes evaluadas")
     parser.add_argument("--data-root", type=str, default="./Datasets/Covid", help="Ruta al dataset")
+    parser.add_argument("--img-size", type=int, default=None, help="Resolución de imagen (default: 28 para MNIST/MedMNIST, 64 otros)")
     parser.add_argument("--in-channels", type=int, default=1, choices=[1, 3], help="Canales de entrada")
     parser.add_argument("--pop-size", type=int, default=12, help="Población")
     parser.add_argument("--generations", type=int, default=5, help="Generaciones")
@@ -70,6 +71,13 @@ def check_experiment_status(chck_dir, variant, seed, execution):
 def main():
     args = parse_args()
     
+    if args.img_size is not None:
+        effective_img_size = args.img_size
+    elif "mnist" in str(args.data_root).lower():
+        effective_img_size = 28
+    else:
+        effective_img_size = 64
+        
     print("\n" + "=" * 78)
     print("           DIAGNÓSTICO Y VERIFICACIÓN DE EXPERIMENTOS DEEPGA")
     print("=" * 78)
@@ -77,6 +85,7 @@ def main():
     print(f"🌱 Rango de Semillas:   {args.start_seed} a {args.end_seed}")
     print(f"🔢 Execution Inicial:   {args.start_exec}")
     print(f"🧬 Variantes:           {', '.join(args.variants)}")
+    print(f"📐 Resolución:          {effective_img_size}x{effective_img_size}")
     print("-" * 78)
     
     if not os.path.exists(args.chck_dir):
@@ -100,7 +109,7 @@ def main():
             
             cmd = (
                 f"python ejemplo_local.py --execution {current_exec} --variant {variant} "
-                f"--seed {seed} --data-root {args.data_root} --pop-size {args.pop_size} "
+                f"--seed {seed} --data-root {args.data_root} --img-size {effective_img_size} --pop-size {args.pop_size} "
                 f"--generations {args.generations} --in-channels {args.in_channels}"
             )
             
