@@ -391,15 +391,15 @@ def generate_confusion_matrix(
     report_text = classification_report(y_true, y_pred, target_names=class_names, digits=4, zero_division=0)
 
     # Graficar
-    plt.figure(figsize=(9, 7))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-                xticklabels=class_names, yticklabels=class_names, cbar=True)
-    plt.xlabel("Predicción del Modelo", fontsize=12, fontweight="bold")
-    plt.ylabel("Etiqueta Real", fontsize=12, fontweight="bold")
-    plt.title(title, fontsize=14, fontweight="bold", pad=12)
-    plt.xticks(rotation=45, ha="right")
-    plt.yticks(rotation=0)
-    plt.tight_layout()
+    #plt.figure(figsize=(9, 7))
+    #sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+     #           xticklabels=class_names, yticklabels=class_names, cbar=True)
+    #plt.xlabel("Predicción del Modelo", fontsize=12, fontweight="bold")
+    #plt.ylabel("Etiqueta Real", fontsize=12, fontweight="bold")
+    #plt.title(title, fontsize=14, fontweight="bold", pad=12)
+    #plt.xticks(rotation=45, ha="right")
+    #plt.yticks(rotation=0)
+    #plt.tight_layout()
 
     if save_fig_path:
         os.makedirs(os.path.dirname(os.path.abspath(save_fig_path)), exist_ok=True)
@@ -408,7 +408,7 @@ def generate_confusion_matrix(
         if auto_download_plot:
             download_file(save_fig_path)
 
-    plt.show()
+    #plt.show()
 
     print("\n" + "=" * 65)
     print(f"     REPORTE DE CLASIFICACIÓN ({title})")
