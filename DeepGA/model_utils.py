@@ -224,12 +224,30 @@ def load_saved_model(model_path: str, device: torch.device = None):
 
 def _adapt_input_tensor(xb: torch.Tensor, model: nn.Module, expected_size: int = None) -> torch.Tensor:
     """Adapta canales y resolución de xb para que coincida exactamente con lo esperado por la CNN."""
-    # 1. Adaptar canales
-    req_channels = 3
-    if hasattr(model, 'features') and len(model.features) > 0 and len(model.features[0]) > 0:
-        first_mod = model.features[0][0]
+    # 1. Adaptar canales detectando la primera capa convolucional del modelo
+    req_channels = None
+    if hasattr(model, 'conv1') and hasattr(model.conv1, 'in_channels'):
+        req_channels = model.conv1.in_channels
+    elif hasattr(model, 'features') and len(model.features) > 0:
+        first_mod = model.features[0]
+        if isinstance(first_mod, (list, nn.Sequential, tuple)) and len(first_mod) > 0:
+            first_mod = first_mod[0]
         if hasattr(first_mod, 'in_channels'):
             req_channels = first_mod.in_channels
+    elif hasattr(model, 'extraction') and len(model.extraction) > 0:
+        first_mod = model.extraction[0]
+        if hasattr(first_mod, 'in_channels'):
+            req_channels = first_mod.in_channels
+
+    # Si no se detectó por atributos conocidos, buscar el primer Conv2d del modelo
+    if req_channels is None:
+        for m in model.modules():
+            if isinstance(m, nn.Conv2d):
+                req_channels = m.in_channels
+                break
+
+    if req_channels is None:
+        req_channels = xb.shape[1]
 
     if xb.shape[1] == 3 and req_channels == 1:
         xb = xb.mean(dim=1, keepdim=True)
