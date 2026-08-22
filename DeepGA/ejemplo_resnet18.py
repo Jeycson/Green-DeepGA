@@ -23,170 +23,185 @@ from model_utils import (
     generate_confusion_matrix                                                                                
 )                                                                                                            
                                                                                                                 
-# Tracker de carbono opcional                                                                                
-from codecarbon import OfflineEmissionsTracker                                                           
-try:                                                                                                         
-    CODECARBON_AVAILABLE = True                                                                              
-except ImportError:                                                                                          
-    CODECARBON_AVAILABLE = False                                                                             
-                                                                                                                
-                                                                                                                
-def parse_args():                                                                                            
-    parser = argparse.ArgumentParser(description="Ejecución de ResNet-18 con métricas normalizadas DeepGA")  
-    parser.add_argument("--execution", type=int, default=1,                                                  
-                        help="ID numérico de la ejecución")                                                  
-    parser.add_argument("--seed", type=int, default=None,                                                    
-                        help="Semilla aleatoria (por defecto igual a execution)")                            
-    parser.add_argument("--data-root", type=str, default="./Datasets/Covid",                                 
-                        help="Ruta al dataset (ej. ./Datasets/Covid o ./data)")                              
-    parser.add_argument("--img-size", type=int, default=64,                                                  
-                        help="Resolución de las imágenes (ej. 28, 64, 128, 224)")                            
-    parser.add_argument("--in-channels", type=int, default=1, choices=[1, 3],                                
-                        help="Canales de entrada: 1 para escala de grises/Covid, 3 para RGB")                
-    parser.add_argument("--epochs", type=int, default=10,                                                    
-                        help="Número de épocas de entrenamiento")                                            
-    parser.add_argument("--batch-size", type=int, default=32,                                                
-                        help="Tamaño del batch")                                                             
-    parser.add_argument("--lr", type=float, default=1e-4,                                                    
-                        help="Tasa de aprendizaje (Learning Rate)")                                          
-    parser.add_argument("--pretrained", action="store_true", default=False,                                  
-                        help="Usar pesos preentrenados de ImageNet (default: False, entrenamiento desde cero)")                                                                                                        
-    parser.add_argument("--chck-dir", type=str, default="./checkpoints/",                                    
-                        help="Directorio de salida para checkpoints y reportes")                             
-    parser.add_argument("--country-iso", type=str, default="MEX",                                            
-                        help="Código ISO del país para huella de carbono")                                   
-    parser.add_argument("--device", type=str, default=None,                                                  
-                        help="Dispositivo ('cuda', 'cpu' o None para auto-detección)")                       
-    return parser.parse_args()                                                                               
-                                                                                                                
-                                                                                                                
-def build_resnet18(in_channels: int, n_classes: int, pretrained: bool = False):                              
-    """Construye y adapta ResNet-18 a los canales y clases del dataset."""                                   
-    if pretrained:                                                                                           
-        weights = models.ResNet18_Weights.DEFAULT                                                            
-        model = models.resnet18(weights=weights)                                                             
-    else:                                                                                                    
-        model = models.resnet18(weights=None)                                                                
-                                                                                                                
-    # 1. Adaptar primera capa convolucional si no es RGB (3 canales)                                         
-    if in_channels != 3:                                                                                     
-        original_conv1 = model.conv1                                                                         
-        model.conv1 = nn.Conv2d(                                                                             
-            in_channels=in_channels,                                                                         
-            out_channels=original_conv1.out_channels,                                                        
-            kernel_size=original_conv1.kernel_size,                                                          
-            stride=original_conv1.stride,                                                                    
-            padding=original_conv1.padding,                                                                  
-            bias=False                                                                                       
-        )                                                                                                    
-                                                                                                                
-    # 2. Adaptar clasificador final a n_classes                                                              
-    in_features = model.fc.in_features                                                                       
-    model.fc = nn.Linear(in_features, n_classes)                                                             
-                                                                                                                
-    return model                                                                                             
-                                                                                                                
-                                                                                                                
-def calculate_model_complexity(model: nn.Module, in_channels: int, img_size: int):                           
-    """Calcula parámetros totales, entrenables, memoria en MB y FLOPs estimados."""                          
-    total_params = sum(p.numel() for p in model.parameters())                                                
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)                         
-    model_size_mb = (total_params * 4.0) / (1024.0 * 1024.0)                                                 
-                                                                                                                
-    # Estimación de FLOPs mediante hook dinámico                                                             
-    flops_total = 0                                                                                          
-    def conv_hook(module, input_val, output_val):                                                            
-        nonlocal flops_total                                                                                 
-        batch_size, out_c, out_h, out_w = output_val.shape                                                   
-        in_c = module.in_channels                                                                            
-        k_h, k_w = module.kernel_size                                                                        
-        flops_total += 2 * batch_size * in_c * out_c * k_h * k_w * out_h * out_w                             
-                                                                                                                
-    def linear_hook(module, input_val, output_val):                                                          
-        nonlocal flops_total                                                                                 
-        batch_size = input_val[0].shape[0]                                                                   
-        flops_total += 2 * batch_size * module.in_features * module.out_features                             
-                                                                                                                
-    hooks = []                                                                                               
-    for m in model.modules():                                                                                
-        if isinstance(m, nn.Conv2d):                                                                         
-            hooks.append(m.register_forward_hook(conv_hook))                                                 
-        elif isinstance(m, nn.Linear):                                                                       
-            hooks.append(m.register_forward_hook(linear_hook))                                               
-                                                                                                                
-    # Inferencia simulada de 1 muestra                                                                       
-    dummy_input = torch.zeros(1, in_channels, img_size, img_size)                                            
-    with torch.no_grad():                                                                                    
-        try:                                                                                                 
-            model.eval()(dummy_input)                                                                        
-        except Exception:                                                                                    
-            pass                                                                                             
-                                                                                                                
-    for h in hooks:                                                                                          
-        h.remove()                                                                                           
-                                                                                                                
-    return {                                                                                                 
-        "total_params": total_params,                                                                        
-        "trainable_params": trainable_params,                                                                
-        "model_size_mb": round(model_size_mb, 4),                                                            
-        "estimated_flops": flops_total                                                                       
-    }                                                                                                        
-                                                                                                                
-                                                                                                                
-def train_epoch(model, dataloader, criterion, optimizer, device):                                            
-    model.train()                                                                                            
-    running_loss = 0.0                                                                                       
-    correct = 0                                                                                              
-    total = 0                                                                                                
-                                                                                                                
-    for data in dataloader:                                                                                  
-        if isinstance(data, (list, tuple)):                                                                  
-            inputs, labels = data[0], data[1]                                                                
-        elif isinstance(data, dict):                                                                         
-            inputs, labels = data["image"], data["label"]                                                    
-        else:                                                                                                
-            continue                                                                                         
-                                                                                                                
-        inputs = inputs.to(device, dtype=torch.float32)                                                      
-        labels = labels.to(device, dtype=torch.long)                                                         
-                                                                                                                
-        optimizer.zero_grad()                                                                                
-        outputs = model(inputs)                                                                              
-        loss = criterion(outputs, labels)                                                                    
-        loss.backward()                                                                                      
-        optimizer.step()                                                                                     
-                                                                                                                
-        running_loss += loss.item() * inputs.size(0)                                                         
-        _, preds = torch.max(outputs, 1)                                                                     
-        correct += torch.sum(preds == labels.data).item()                                                    
-        total += inputs.size(0)                                                                              
-                                                                                                                
-    epoch_loss = running_loss / max(1, total)                                                                
-    epoch_acc = (correct / max(1, total)) * 100.0                                                            
-    return epoch_loss, epoch_acc                                                                             
-                                                                                                                
-                                                                                                                
-def evaluate_accuracy(model, dataloader, device):                                                            
-    model.eval()                                                                                             
-    correct = 0                                                                                              
-    total = 0                                                                                                
-    with torch.no_grad():                                                                                    
-        for data in dataloader:                                                                              
-            if isinstance(data, (list, tuple)):                                                              
-                inputs, labels = data[0], data[1]                                                            
-            elif isinstance(data, dict):                                                                     
-                inputs, labels = data["image"], data["label"]                                                
-            else:                                                                                            
-                continue                                                                                     
-                                                                                                                
-            inputs = inputs.to(device, dtype=torch.float32)                                                  
-            labels = labels.to(device, dtype=torch.long)                                                     
-                                                                                                                
-            outputs = model(inputs)                                                                          
-            _, preds = torch.max(outputs, 1)                                                                 
-            correct += torch.sum(preds == labels.data).item()                                                
-            total += inputs.size(0)                                                                          
-                                                                                                                
+# Tracker de carbono opcional
+try:
+    from codecarbon import OfflineEmissionsTracker
+    CODECARBON_AVAILABLE = True
+except ImportError:
+    CODECARBON_AVAILABLE = False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Ejecución de ResNet-18 con métricas normalizadas DeepGA")
+    parser.add_argument("--execution", type=int, default=1,
+                        help="ID numérico de la ejecución")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Semilla aleatoria (por defecto igual a execution)")
+    parser.add_argument("--data-root", type=str, default="./Datasets/Covid",
+                        help="Ruta al dataset (ej. ./Datasets/Covid o ./data)")
+    parser.add_argument("--img-size", type=int, default=64,
+                        help="Resolución de las imágenes (ej. 28, 64, 128, 224)")
+    parser.add_argument("--in-channels", type=int, default=1, choices=[1, 3],
+                        help="Canales de entrada: 1 para escala de grises/Covid, 3 para RGB")
+    parser.add_argument("--epochs", type=int, default=10,
+                        help="Número de épocas de entrenamiento")
+    parser.add_argument("--batch-size", type=int, default=32,
+                        help="Tamaño del batch")
+    parser.add_argument("--lr", type=float, default=1e-4,
+                        help="Tasa de aprendizaje (Learning Rate)")
+    parser.add_argument("--pretrained", action="store_true", default=False,
+                        help="Usar pesos preentrenados de ImageNet (default: False, entrenamiento desde cero)")
+    parser.add_argument("--chck-dir", type=str, default="./checkpoints/",
+                        help="Directorio de salida para checkpoints y reportes")
+    parser.add_argument("--country-iso", type=str, default="MEX",
+                        help="Código ISO del país para huella de carbono")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Dispositivo ('cuda', 'cpu' o None para auto-detección)")
+    return parser.parse_args()
+
+
+def build_resnet18(in_channels: int, n_classes: int, pretrained: bool = False):
+    """Construye y adapta ResNet-18 a los canales y clases del dataset."""
+    if pretrained:
+        weights = models.ResNet18_Weights.DEFAULT
+        model = models.resnet18(weights=weights)
+    else:
+        model = models.resnet18(weights=None)
+
+    # 1. Adaptar primera capa convolucional si no es RGB (3 canales)
+    if in_channels != 3:
+        original_conv1 = model.conv1
+        model.conv1 = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=original_conv1.out_channels,
+            kernel_size=original_conv1.kernel_size,
+            stride=original_conv1.stride,
+            padding=original_conv1.padding,
+            bias=False
+        )
+
+    # 2. Adaptar clasificador final a n_classes
+    in_features = model.fc.in_features
+    model.fc = nn.Linear(in_features, n_classes)
+
+    return model
+
+
+def adapt_input_channels(xb: torch.Tensor, target_channels: int) -> torch.Tensor:
+    """Adapta canales del tensor de entrada según lo que espera la red convolucional."""
+    if xb.shape[1] == 3 and target_channels == 1:
+        return xb.mean(dim=1, keepdim=True)
+    elif xb.shape[1] == 1 and target_channels == 3:
+        return xb.repeat(1, 3, 1, 1)
+    return xb
+
+
+def calculate_model_complexity(model: nn.Module, in_channels: int, img_size: int):
+    """Calcula parámetros totales, entrenables, memoria en MB y FLOPs estimados."""
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    model_size_mb = (total_params * 4.0) / (1024.0 * 1024.0)
+
+    # Estimación de FLOPs mediante hook dinámico
+    flops_total = 0
+    def conv_hook(module, input_val, output_val):
+        nonlocal flops_total
+        batch_size, out_c, out_h, out_w = output_val.shape
+        in_c = module.in_channels
+        k_h, k_w = module.kernel_size if isinstance(module.kernel_size, tuple) else (module.kernel_size, module.kernel_size)
+        flops_total += 2 * batch_size * in_c * out_c * k_h * k_w * out_h * out_w
+
+    def linear_hook(module, input_val, output_val):
+        nonlocal flops_total
+        batch_size = input_val[0].shape[0]
+        flops_total += 2 * batch_size * module.in_features * module.out_features
+
+    hooks = []
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            hooks.append(m.register_forward_hook(conv_hook))
+        elif isinstance(m, nn.Linear):
+            hooks.append(m.register_forward_hook(linear_hook))
+
+    # Inferencia simulada de 1 muestra
+    dummy_input = torch.zeros(1, in_channels, img_size, img_size)
+    with torch.no_grad():
+        try:
+            model.eval()(dummy_input)
+        except Exception:
+            pass
+
+    for h in hooks:
+        h.remove()
+
+    return {
+        "total_params": total_params,
+        "trainable_params": trainable_params,
+        "model_size_mb": round(model_size_mb, 4),
+        "estimated_flops": flops_total
+    }
+
+
+def train_epoch(model, dataloader, criterion, optimizer, device):
+    model.train()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    expected_channels = model.conv1.in_channels if hasattr(model, 'conv1') else 3
+
+    for data in dataloader:
+        if isinstance(data, (list, tuple)):
+            inputs, labels = data[0], data[1]
+        elif isinstance(data, dict):
+            inputs, labels = data["image"], data["label"]
+        else:
+            continue
+
+        inputs = inputs.to(device, dtype=torch.float32)
+        inputs = adapt_input_channels(inputs, expected_channels)
+        labels = labels.to(device, dtype=torch.long)
+
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item() * inputs.size(0)
+        _, preds = torch.max(outputs, 1)
+        correct += torch.sum(preds == labels.data).item()
+        total += inputs.size(0)
+
+    epoch_loss = running_loss / max(1, total)
+    epoch_acc = (correct / max(1, total)) * 100.0
+    return epoch_loss, epoch_acc
+
+
+def evaluate_accuracy(model, dataloader, device):
+    model.eval()
+    correct = 0
+    total = 0
+    expected_channels = model.conv1.in_channels if hasattr(model, 'conv1') else 3
+
+    with torch.no_grad():
+        for data in dataloader:
+            if isinstance(data, (list, tuple)):
+                inputs, labels = data[0], data[1]
+            elif isinstance(data, dict):
+                inputs, labels = data["image"], data["label"]
+            else:
+                continue
+
+            inputs = inputs.to(device, dtype=torch.float32)
+            inputs = adapt_input_channels(inputs, expected_channels)
+            labels = labels.to(device, dtype=torch.long)
+
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+            correct += torch.sum(preds == labels.data).item()
+            total += inputs.size(0)
+
     return (correct / max(1, total)) * 100.0 if total > 0 else 0.0                                           
                                                                                                                 
                                                                                                                 
