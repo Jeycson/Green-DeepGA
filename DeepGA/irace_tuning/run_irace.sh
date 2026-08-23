@@ -9,10 +9,10 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${DIR}"
 
-echo "======================================================================"
-echo "    LANZADOR DE IRACE PARA OPTIMIZACIÓN DE HIPERPARÁMETROS DEEPGA"
-echo "    Variantes: V10, V11, V12 | Datasets: Tumour, Tumour_3"
-echo "======================================================================"
+    echo "======================================================================"
+    echo "    LANZADOR DE IRACE PARA OPTIMIZACIÓN DE HIPERPARÁMETROS DEEPGA"
+    echo "    Variantes: V10, V11, V12 | Datasets: Benchmark 7 Datasets (baseline.csv)"
+    echo "======================================================================"
 
 # 1. Verificar si existe R y el paquete irace
 if ! command -v Rscript &> /dev/null; then

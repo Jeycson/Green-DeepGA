@@ -4,6 +4,9 @@ rem target-runner para irace y DeepGA (Windows Batch)
 rem ===========================================================================
 setlocal enabledelayedexpansion
 
+rem Forzar UTF-8 para evitar errores de codificación con caracteres especiales
+chcp 65001 >nul 2>nul
+
 set "TARGET_RUNNER_DIR=%~dp0"
 set "PROJECT_ROOT=%TARGET_RUNNER_DIR%.."
 
@@ -44,6 +47,17 @@ shift
 goto parse_args
 
 :execute_runner
-"%PYTHON_EXE%" "%TARGET_RUNNER_DIR%runner_deepga.py" --instance "%INSTANCE%" --seed %SEED% --config-id "%CONFIG_ID%" --instance-id "%INSTANCE_ID%" %PARAMS%
+set "RAW_COST="
+rem Ejecutar runner redirigiendo stderr al archivo de errores
+for /f "delims=" %%i in ('"%PYTHON_EXE%" "%TARGET_RUNNER_DIR%runner_deepga.py" --instance "%INSTANCE%" --seed %SEED% --config-id "%CONFIG_ID%" --instance-id "%INSTANCE_ID%" %PARAMS% 2^>^> "%TARGET_RUNNER_DIR%irace_logs\runner_errors.log"') do (
+    set "RAW_COST=%%i"
+)
+
+rem Si la salida no es vacía, imprimir el costo; de lo contrario devolver costo de penalización
+if defined RAW_COST (
+    echo !RAW_COST!
+) else (
+    echo 2.000000
+)
 
 exit /b 0
