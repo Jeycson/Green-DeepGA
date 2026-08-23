@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # ==============================================================================
 # Script de Ejecución Programática de irace para DeepGA
-# Ejecuta la optimización, evalúa en validación y exporta las mejores configuraciones
+# Ejecuta la optimización, guarda checkpoints y exporta las mejores configuraciones
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -13,7 +13,7 @@ suppressPackageStartupMessages({
 
 cat("======================================================================\n")
 cat("    IRACE OPTIMIZATION PIPELINE FOR DEEPGA (V10, V11, V12)\n")
-cat("    Generalization Setup: 5 Train Instances / 2 Validation Instances\n")
+cat("    Datasets: Tumour, Tumour_3\n")
 cat("======================================================================\n\n")
 
 # 1. Leer escenario
@@ -36,11 +36,7 @@ checkIraceScenario(scenario = scenario)
 
 cat(sprintf("📌 Presupuesto de experimentos (maxExperiments): %d\n", scenario$maxExperiments))
 cat(sprintf("📌 Paralelismo activo: %d\n", scenario$parallel))
-cat(sprintf("📌 Archivo de instancias de Entrenamiento: %s\n", scenario$trainInstancesFile))
-if (nchar(scenario$testInstancesFile) > 0) {
-  cat(sprintf("📌 Archivo de instancias de Validación / Test: %s\n", scenario$testInstancesFile))
-  cat(sprintf("📌 Élites evaluados en test (testNbElites): %d\n", scenario$testNbElites))
-}
+cat(sprintf("📌 Archivo de instancias: %s\n", scenario$trainInstancesFile))
 cat(sprintf("📌 Target runner: %s\n\n", scenario$targetRunner))
 
 # 2. Ejecutar la búsqueda de irace
@@ -83,16 +79,7 @@ for (p in param_names) {
   }
 }
 
-# 4. Mostrar resultados de evaluación en el conjunto de test si existen
-if (!is.null(irace_results$testing) && !is.null(irace_results$testing$experiments)) {
-  cat("\n======================================================================\n")
-  cat("📊 RESULTADOS DE EVALUACIÓN EN INSTANCIAS DE TEST (NO VISTAS):\n")
-  cat("======================================================================\n")
-  test_exp <- irace_results$testing$experiments
-  print(test_exp)
-}
-
-# 5. Guardar mejor configuración en formato de texto plano y comando CLI
+# 4. Guardar mejor configuración en formato de texto plano y comando CLI
 cli_flags <- ""
 for (p in param_names) {
   val <- best_config[[p]]

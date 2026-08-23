@@ -73,8 +73,7 @@ echo.
 echo Iniciando proceso de optimizacion con irace...
 echo Escenario: scenario.txt
 echo Parametros: parameters.txt
-echo Instancias Train: train_instances.txt
-echo Instancias Test:  test_instances.txt
+echo Instancias: instances.txt
 echo ----------------------------------------------------------------------
 
 "!RSCRIPT_EXE!" run_irace.R
