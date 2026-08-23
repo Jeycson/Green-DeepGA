@@ -42,7 +42,8 @@ echo ""
 echo "🚀 Iniciando proceso de búsqueda con irace..."
 echo "📄 Escenario: scenario.txt"
 echo "⚙️  Parámetros: parameters.txt"
-echo "📂 Instancias: instances.txt"
+echo "📂 Instancias Train (5): train_instances.txt"
+echo "📂 Instancias Test (2):  test_instances.txt"
 echo "----------------------------------------------------------------------"
 
 # 5. Ejecutar irace

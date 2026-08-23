@@ -11,15 +11,27 @@ execDir = "./"
 # Script ejecutable target-runner (usar "./target-runner" en Linux/macOS o "./target-runner.bat" en Windows)
 targetRunner = "./target-runner"
 
-# Archivo con las instancias de entrenamiento (COVID, BreadMNIST, DermaMNIST, BloodMNIST, OrganCMNIST, PathMNIST, CIFAR-10)
-trainInstancesFile = "instances.txt"
+# 1. Instancias de Entrenamiento (5 datasets para el proceso de tuning/racing)
+trainInstancesFile = "train_instances.txt"
 
-# Presupuesto total de experimentos (evaluaciones de candidatos de DeepGA)
+# 2. Instancias de Validación / Test (2 datasets no vistos para evaluar la generalización)
+testInstancesFile = "test_instances.txt"
+
+# Número de configuraciones élite a evaluar sobre las instancias de prueba (1 = mejor candidato)
+testNbElites = 1
+
+# Evaluar únicamente los élites finales al concluir la búsqueda (0)
+testIterationElites = 0
+
+# Presupuesto total de experimentos (evaluaciones de candidatos de DeepGA en entrenamiento)
 # Para ~20 parámetros, irace requiere al menos 504 con firstTest=5, o >=280 con firstTest=3
 maxExperiments = 600
 
-# Número de instancias evaluadas antes del primer descarte estadístico (por defecto 5, usar 3 para pruebas más rápidas)
+# Número de instancias evaluadas antes del primer descarte estadístico (3 a 5 para 5 instancias de train)
 firstTest = 3
+
+# Aleatorizar y balancear el orden de presentación de las instancias de entrenamiento
+sampleInstances = 1
 
 # Paralelismo: número de evaluaciones concurrentes
 # Incrementar si la máquina cuenta con múltiples GPUs o núcleos CPU abundantes

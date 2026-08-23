@@ -30,3 +30,5 @@ Traceback (most recent call last):
   File "/home/jeycson/Downloads/G-DeepGA/DeepGA/irace_tuning/runner_deepga.py", line 26, in <module>
     import torch
 ModuleNotFoundError: No module named 'torch'
+ERROR: Dataset no encontrado en 'COVID' (instancia: COVID)
+ERROR: Dataset no encontrado en 'COVID' (instancia: COVID)

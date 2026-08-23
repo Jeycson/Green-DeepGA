@@ -2,7 +2,7 @@
 # ==============================================================================
 # Script de Análisis Post-Optimización para irace y DeepGA
 # Carga 'irace.Rdata' e inspecciona las configuraciones ganadoras,
-# el rendimiento sobre Tumour y Tumour_3 y exporta los mejores parámetros.
+# el rendimiento sobre instancias de entrenamiento y test, y exporta parámetros.
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -69,13 +69,21 @@ for (p in param_names) {
   }
 }
 
-# 3. Exportar a JSON
+# 3. Mostrar rendimiento en el conjunto de prueba (Test Instances)
+if (!is.null(iraceResults$testing) && !is.null(iraceResults$testing$experiments)) {
+  cat("\n======================================================================\n")
+  cat("📊 EVALUACIÓN DE GENERALIZACIÓN EN TEST SET (DATASETS NO VISTOS):\n")
+  cat("======================================================================\n")
+  print(iraceResults$testing$experiments)
+}
+
+# 4. Exportar a JSON
 json_content <- paste0("{\n", paste(json_entries, collapse = ",\n"), "\n}")
 json_file <- "best_configuration.json"
 writeLines(json_content, con = json_file)
 cat(sprintf("\n💾 Parámetros óptimos exportados en formato JSON: %s\n", json_file))
 
-# 4. Exportar comando para re-entrenar modelo final
+# 5. Exportar comando para re-entrenar modelo final
 cmd_file <- "best_configuration_cmd.txt"
 writeLines(cli_args, con = cmd_file)
 cat(sprintf("💾 Comando CLI exportado en: %s\n", cmd_file))
