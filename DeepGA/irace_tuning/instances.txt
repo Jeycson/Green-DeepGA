@@ -1,2 +1,7 @@
-Tumour
-Tumour_3
+COVID
+BreadMNIST
+DermaMNIST
+BloodMNIST
+OrganCMNIST
+PathMNIST
+CIFAR-10

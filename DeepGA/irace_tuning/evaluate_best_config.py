@@ -170,12 +170,27 @@ def main():
     saved_model = resultados.get("saved_model_path")
     class_names = resultados.get("class_names", ["BENIGN", "MALIGNANT", "NORMAL"])
 
+    # Comparación con baseline.csv
+    baseline_csv = CURRENT_DIR / "baseline.csv"
+    from runner_deepga import load_baseline_metrics, get_dataset_baseline, calculate_normalized_cost
+    b_map = load_baseline_metrics(baseline_csv)
+    b_info = get_dataset_baseline(args.dataset, b_map)
+
+    f1_val = resultados.get("f1", resultados.get("best_accuracy", 0.0))
+    if f1_val is not None and f1_val <= 1.0 and f1_val > 0.0:
+        f1_val = f1_val * 100.0
+    energy_val = resultados.get("energy_consumed_kwh", 0.0)
+    norm_cost, details = calculate_normalized_cost(f1_val, energy_val, b_info["macro_f1"], b_info["energy_kwh"])
+
     print("\n" + "=" * 65)
     print("🎉 RESULTADOS FINALES DE LA ARQUITECTURA GANADORA")
     print("=" * 65)
     print(f"🏆 Mejor Accuracy en Validación (GA): {resultados.get('best_accuracy', 0.0) * 100:.2f}%")
     if resultados.get("final_test_accuracy") is not None:
         print(f"🎯 Accuracy en Test Set Independiente: {resultados.get('final_test_accuracy') * 100:.2f}%")
+    print(f"📊 Macro F1 alcanzado:                {f1_val:.3f}% (Baseline: {b_info['macro_f1']:.3f}%)")
+    print(f"⚡ Consumo de Energía:                 {energy_val:.6f} kWh (Baseline: {b_info['energy_kwh']:.6f} kWh)")
+    print(f"🎯 Costo Multi-Objetivo Normalizado:  {norm_cost:.6f} (Baseline = 1.000000)")
     print(f"📦 Parámetros totales de la red:      {resultados.get('best_total_params', 0):,}")
     print(f"💾 Tamaño estimado del modelo:        {resultados.get('best_model_size_mb', 0.0):.2f} MB")
     print(f"⚡ FLOPs estimados:                   {resultados.get('best_estimated_flops', 0):,}")

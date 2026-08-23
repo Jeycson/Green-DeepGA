@@ -11,7 +11,7 @@ execDir = "./"
 # Script ejecutable target-runner (usar "./target-runner" en Linux/macOS o "./target-runner.bat" en Windows)
 targetRunner = "./target-runner"
 
-# Archivo con las instancias de entrenamiento (Tumour, Tumour_3)
+# Archivo con las instancias de entrenamiento (COVID, BreadMNIST, DermaMNIST, BloodMNIST, OrganCMNIST, PathMNIST, CIFAR-10)
 trainInstancesFile = "instances.txt"
 
 # Presupuesto total de experimentos (evaluaciones de candidatos de DeepGA)

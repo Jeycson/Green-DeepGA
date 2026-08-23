@@ -27,7 +27,7 @@ set "SEED=%~3"
 set "INSTANCE=%~4"
 
 if "%CONFIG_ID%"=="" (
-    echo 1.000000
+    echo 2.000000
     exit /b 0
 )
 

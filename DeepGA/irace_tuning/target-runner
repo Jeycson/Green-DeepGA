@@ -10,7 +10,7 @@
 # $5+: Parámetros de la configuración generados por irace
 #
 # Retorno:
-# Debe imprimir un único número flotante por STDOUT (el costo a minimizar: 1.0 - accuracy)
+# Debe imprimir un único número flotante por STDOUT (el costo multi-objetivo normalizado a minimizar)
 # Retorna código 0 en éxito.
 ###############################################################################
 
@@ -30,7 +30,7 @@ elif command -v python3 &> /dev/null; then
 elif command -v python &> /dev/null; then
     PYTHON_EXE="$(command -v python)"
 else
-    echo "1.000000"
+    echo "2.000000"
     exit 0
 fi
 
@@ -40,7 +40,7 @@ SEED="$3"
 INSTANCE="$4"
 
 if [ -z "${CONFIG_ID}" ] || [ -z "${INSTANCE_ID}" ] || [ -z "${SEED}" ] || [ -z "${INSTANCE}" ]; then
-    echo "1.000000"
+    echo "2.000000"
     exit 0
 fi
 
@@ -64,7 +64,7 @@ EXIT_CODE=$?
 COST=$(echo "${RAW_OUTPUT}" | grep -Eo '^[0-9]+(\.[0-9]+)?' | tail -n 1)
 
 if [ -z "${COST}" ]; then
-    echo "1.000000"
+    echo "2.000000"
 else
     echo "${COST}"
 fi

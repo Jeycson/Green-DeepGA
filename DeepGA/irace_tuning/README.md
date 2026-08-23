@@ -22,18 +22,31 @@ En los experimentos iniciales, se detectaron cuatro factores clave que frenan el
 ```
 irace_tuning/
 ├── target-runner              # Ejecutable wrapper llamado directamente por irace
-├── runner_deepga.py           # Motor en Python que entrena DeepGA y retorna el costo (1.0 - acc)
-├── parameters.txt             # Espacio de búsqueda y parámetros condicionales (v10, v11, v12)
+├── runner_deepga.py           # Motor en Python con evaluación multi-objetivo normalizada (Macro F1 + Energía)
+├── parameters.txt             # Espacio de búsqueda y parámetros condicionales (v10, v11, v12, final_epochs)
+├── baseline.csv               # Promedios de 10 corridas de la versión original (Macro F1 y Consumo kWh)
 ├── scenario.txt               # Configuración del escenario de irace (budget, tests, logs)
-├── instances.txt              # Lista de instancias a optimizar (Tumour, Tumour_3)
+├── instances.txt              # Lista de instancias a optimizar
 ├── run_irace.sh               # Script Bash de un solo clic para lanzar irace
 ├── run_irace.R                # Script en R alternativo con ejecución programática
 ├── analyze_results.R          # Extrae las configuraciones élite y genera reportes
-├── evaluate_best_config.py    # Re-entrena la red ganadora, genera matriz de confusión y guarda el .pth
-├── test_target_runner.py      # Test rápido de auto-diagnóstico (1 corrida seca)
+├── evaluate_best_config.py    # Re-entrena la red ganadora, compara con baseline y guarda métricas
+├── test_target_runner.py      # Test de auto-diagnóstico y verificación matemática de normalización
 ├── requirements.txt           # Dependencias de Python requeridas
 └── README.md                  # Esta guía
 ```
+
+---
+
+## ⚡ Formulación Multi-Objetivo Normalizada (Green NAS)
+
+Para encontrar redes neuronales de **alto rendimiento predictivo y bajo consumo energético**, `runner_deepga.py` evalúa cada configuración de forma normalizada respecto a las 10 corridas promedio de la versión original almacenadas en `baseline.csv`:
+
+$$\text{Costo} = w_{F1} \cdot \left( \frac{100.0 - \text{Macro\_F1}_{\text{run}}}{\max(100.0 - \text{Macro\_F1}_{\text{base}}, 1.0)} \right) + w_{\text{Energy}} \cdot \left( \frac{\text{Energy}_{\text{run}}}{\max(\text{Energy}_{\text{base}}, 10^{-7})} \right)$$
+
+- **Ponderaciones por defecto**: $w_{F1} = 0.60$ (Rendimiento), $w_{\text{Energy}} = 0.40$ (Eficiencia Verde).
+- **Punto de Referencia Baseline**: En el rendimiento exacto del baseline original, $\text{Costo} = 1.000000$.
+- **Invariancia de Escala**: Al normalizar el consumo respecto a la energía base de cada dataset ($\text{Energy}_{\text{base}}$), un ahorro del 20% en un dataset pesado (ej. **PathMNIST**, $0.0321$ kWh) y un ahorro del 20% en un dataset ligero (ej. **BreadMNIST**, $0.00023$ kWh) aportan exactamente la **misma reducción de costo (-0.08)**, garantizando una ponderación justa e independiente del tamaño del dataset.
 
 ---
 
