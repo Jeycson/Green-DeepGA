@@ -16,26 +16,50 @@ import torch
 import torch.nn as nn
 from torchvision import models
 
-# Asegurar que el directorio raíz del proyecto esté en sys.path
+# Asegurar que el directorio raíz del proyecto y sus submódulos estén en sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+for _p in [PROJECT_ROOT, PROJECT_ROOT / "deepga", PROJECT_ROOT / "deepga" / "data", PROJECT_ROOT / "deepga" / "utils"]:
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 # Importar utilidades y loaders existentes en el proyecto
 try:
     from deepga.data.loaders import load_dataset_auto
+except Exception:
+    try:
+        from loaders import load_dataset_auto
+    except Exception:
+        import importlib.util
+        _loader_file = PROJECT_ROOT / "deepga" / "data" / "loaders.py"
+        _spec = importlib.util.spec_from_file_location("deepga_loaders", str(_loader_file))
+        _mod = importlib.util.module_from_spec(_spec)
+        sys.modules["deepga_loaders"] = _mod
+        _spec.loader.exec_module(_mod)
+        load_dataset_auto = _mod.load_dataset_auto
+
+try:
     from deepga.utils.model_utils import (
         compute_classification_metrics,
         save_experiment_record,
         generate_confusion_matrix
     )
-except ImportError:
-    from dataset_loader import load_dataset_auto
-    from model_utils import (
-        compute_classification_metrics,
-        save_experiment_record,
-        generate_confusion_matrix
-    )
+except Exception:
+    try:
+        from model_utils import (
+            compute_classification_metrics,
+            save_experiment_record,
+            generate_confusion_matrix
+        )
+    except Exception:
+        import importlib.util
+        _mu_file = PROJECT_ROOT / "deepga" / "utils" / "model_utils.py"
+        _spec = importlib.util.spec_from_file_location("deepga_model_utils", str(_mu_file))
+        _mod = importlib.util.module_from_spec(_spec)
+        sys.modules["deepga_model_utils"] = _mod
+        _spec.loader.exec_module(_mod)
+        compute_classification_metrics = _mod.compute_classification_metrics
+        save_experiment_record = _mod.save_experiment_record
+        generate_confusion_matrix = _mod.generate_confusion_matrix
 
 # Tracker de carbono opcional
 try:
