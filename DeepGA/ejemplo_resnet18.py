@@ -6,23 +6,37 @@ Runner Individual de ResNet-18 con soporte para:
 4. Matriz de confusión y checkpoints de pesos (.pth)                                                         
 """                                                                                                          
                                                                                                                  
-import os                                                                                                    
-import sys                                                                                                   
-import time                                                                                                  
-import argparse                                                                                              
-import numpy as np                                                                                           
-import torch                                                                                                 
-import torch.nn as nn                                                                                        
-from torchvision import models                                                                               
-                                                                                                                
-# Importar utilidades y loaders existentes en el proyecto                                                    
-from deepga.data.loaders import load_dataset_auto
-from deepga.utils.model_utils import (
-    compute_classification_metrics,                                                                          
-    save_experiment_record,                                                                                  
-    generate_confusion_matrix                                                                                
-)                                                                                                            
-                                                                                                                
+import os
+import sys
+import time
+import argparse
+from pathlib import Path
+import numpy as np
+import torch
+import torch.nn as nn
+from torchvision import models
+
+# Asegurar que el directorio raíz del proyecto esté en sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Importar utilidades y loaders existentes en el proyecto
+try:
+    from deepga.data.loaders import load_dataset_auto
+    from deepga.utils.model_utils import (
+        compute_classification_metrics,
+        save_experiment_record,
+        generate_confusion_matrix
+    )
+except ImportError:
+    from dataset_loader import load_dataset_auto
+    from model_utils import (
+        compute_classification_metrics,
+        save_experiment_record,
+        generate_confusion_matrix
+    )
+
 # Tracker de carbono opcional
 try:
     from codecarbon import OfflineEmissionsTracker
@@ -37,23 +51,23 @@ def parse_args():
                         help="ID numérico de la ejecución")
     parser.add_argument("--seed", type=int, default=None,
                         help="Semilla aleatoria (por defecto igual a execution)")
-    parser.add_argument("--data-root", type=str, default="./Datasets/Covid",
-                        help="Ruta al dataset (ej. ./Datasets/Covid o ./data)")
-    parser.add_argument("--img-size", type=int, default=64,
+    parser.add_argument("--data-root", "--data_root", "--dataset", type=str, default="./Datasets/Covid",
+                        help="Ruta al dataset o nombre (ej. organcmnist, BreadMNIST, Covid, CIFAR-10)")
+    parser.add_argument("--img-size", "--img_size", type=int, default=28,
                         help="Resolución de las imágenes (ej. 28, 64, 128, 224)")
-    parser.add_argument("--in-channels", type=int, default=1, choices=[1, 3],
-                        help="Canales de entrada: 1 para escala de grises/Covid, 3 para RGB")
-    parser.add_argument("--epochs", type=int, default=10,
+    parser.add_argument("--in-channels", "--in-channel", "--in_channels", "--in_channel", type=int, default=1, choices=[1, 3],
+                        help="Canales de entrada: 1 para escala de grises/Covid/MedMNIST, 3 para RGB")
+    parser.add_argument("--epochs", "--final-epochs", "--final-epoch", "--final_epochs", "--final_epoch", type=int, default=10,
                         help="Número de épocas de entrenamiento")
-    parser.add_argument("--batch-size", type=int, default=32,
+    parser.add_argument("--batch-size", "--batch_size", type=int, default=32,
                         help="Tamaño del batch")
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Tasa de aprendizaje (Learning Rate)")
     parser.add_argument("--pretrained", action="store_true", default=False,
                         help="Usar pesos preentrenados de ImageNet (default: False, entrenamiento desde cero)")
-    parser.add_argument("--chck-dir", type=str, default="./checkpoints/",
+    parser.add_argument("--chck-dir", "--chck_dir", type=str, default="./checkpoints/",
                         help="Directorio de salida para checkpoints y reportes")
-    parser.add_argument("--country-iso", type=str, default="MEX",
+    parser.add_argument("--country-iso", "--country_iso", type=str, default="MEX",
                         help="Código ISO del país para huella de carbono")
     parser.add_argument("--device", type=str, default=None,
                         help="Dispositivo ('cuda', 'cpu' o None para auto-detección)")
