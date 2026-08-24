@@ -49,6 +49,36 @@ def parse_args():
                         help="Learning rate (default: 1e-4)")
     parser.add_argument("--w", type=float, default=0.3,
                         help="Peso w de penalización de parámetros (default: 0.3)")
+    parser.add_argument("--t-size", type=int, default=3,
+                        help="Tamaño de torneo de selección (default: 3)")
+    parser.add_argument("--cr", type=float, default=0.7,
+                        help="Probabilidad de cruce / crossover rate (default: 0.7)")
+    parser.add_argument("--mr", type=float, default=0.5,
+                        help="Probabilidad de mutación base (default: 0.5)")
+    parser.add_argument("--mr-min", type=float, default=0.10,
+                        help="Tasa mínima de mutación adaptativa (default: 0.10)")
+    parser.add_argument("--mr-max", type=float, default=0.85,
+                        help="Tasa máxima de mutación adaptativa (default: 0.85)")
+    parser.add_argument("--pool-candidates-factor", type=int, default=5,
+                        help="Factor de candidatos a predecir por el subrogado (default: 5)")
+    parser.add_argument("--kappa", type=float, default=0.10,
+                        help="Parámetro kappa de exploración UCB (default: 0.10)")
+    parser.add_argument("--rho", type=float, default=0.10,
+                        help="Tasa de evaporación de feromonas rho en V10/V11 (default: 0.10)")
+    parser.add_argument("--alpha", type=float, default=1.0,
+                        help="Ponderación alpha de feromonas en V10/V11 (default: 1.0)")
+    parser.add_argument("--top-k-ratio", type=float, default=0.20,
+                        help="Ratio élite para depósito de feromonas (default: 0.20)")
+    parser.add_argument("--n-islands", type=int, default=3,
+                        help="Número de islas evolutivas (default: 3)")
+    parser.add_argument("--migration-interval", type=int, default=12,
+                        help="Intervalo de generaciones para migración (default: 12)")
+    parser.add_argument("--migration-size", type=int, default=1,
+                        help="Cantidad de individuos que migran por isla (default: 1)")
+    parser.add_argument("--target-diversity", type=float, default=0.25,
+                        help="Diversidad estructural objetivo intra-isla (default: 0.25)")
+    parser.add_argument("--stagnation-limit", type=int, default=4,
+                        help="Límite de generaciones sin mejora antes de anti-estancamiento (default: 4)")
     parser.add_argument("--chck-dir", type=str, default="./checkpoints/",
                         help="Directorio de checkpoints (default: ./checkpoints/)")
     parser.add_argument("--country-iso", type=str, default="MEX",
@@ -118,6 +148,21 @@ def main():
                 "--batch-size", str(args.batch_size),
                 "--lr", str(args.lr),
                 "--w", str(args.w),
+                "--t-size", str(args.t_size),
+                "--cr", str(args.cr),
+                "--mr", str(args.mr),
+                "--mr-min", str(args.mr_min),
+                "--mr-max", str(args.mr_max),
+                "--pool-candidates-factor", str(args.pool_candidates_factor),
+                "--kappa", str(args.kappa),
+                "--rho", str(args.rho),
+                "--alpha", str(args.alpha),
+                "--top-k-ratio", str(args.top_k_ratio),
+                "--n-islands", str(args.n_islands),
+                "--migration-interval", str(args.migration_interval),
+                "--migration-size", str(args.migration_size),
+                "--target-diversity", str(args.target_diversity),
+                "--stagnation-limit", str(args.stagnation_limit),
                 "--chck-dir", args.chck_dir,
                 "--country-iso", args.country_iso
             ]

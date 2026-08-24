@@ -46,6 +46,26 @@ def parse_args():
                         help="Tasa de aprendizaje (por defecto: 1e-4)")
     parser.add_argument("--w", type=float, default=0.3,
                         help="Peso de penalización por parámetros (por defecto: 0.3)")
+    parser.add_argument("--t-size", type=int, default=3,
+                        help="Tamaño de torneo de selección (por defecto: 3)")
+    parser.add_argument("--cr", type=float, default=0.7,
+                        help="Probabilidad de cruce / crossover rate (por defecto: 0.7)")
+    parser.add_argument("--mr", type=float, default=0.5,
+                        help="Probabilidad de mutación / mutation rate base (por defecto: 0.5)")
+    parser.add_argument("--mr-min", type=float, default=0.10,
+                        help="Tasa mínima de mutación adaptativa (por defecto: 0.10)")
+    parser.add_argument("--mr-max", type=float, default=0.85,
+                        help="Tasa máxima de mutación adaptativa (por defecto: 0.85)")
+    parser.add_argument("--pool-candidates-factor", type=int, default=5,
+                        help="Factor de candidatos a predecir por el subrogado (por defecto: 5)")
+    parser.add_argument("--kappa", type=float, default=0.10,
+                        help="Parámetro kappa de exploración UCB (por defecto: 0.10)")
+    parser.add_argument("--rho", type=float, default=0.10,
+                        help="Tasa de evaporación de feromonas rho en V10/V11 (por defecto: 0.10)")
+    parser.add_argument("--alpha", type=float, default=1.0,
+                        help="Ponderación alpha de feromonas en V10/V11 (por defecto: 1.0)")
+    parser.add_argument("--top-k-ratio", type=float, default=0.20,
+                        help="Ratio élite para depósito de feromonas (por defecto: 0.20)")
     parser.add_argument("--n-islands", type=int, default=3,
                         help="Número de islas evolutivas independientes para V11/V12 (por defecto: 3)")
     parser.add_argument("--migration-interval", type=int, default=12,
@@ -124,6 +144,18 @@ def main():
         train_epochs=args.train_epochs,
         lr=args.lr,
         w=args.w,
+        cr=args.cr,
+        mr=args.mr,
+        mr_min=args.mr_min,
+        mr_max=args.mr_max,
+        t_size=args.t_size,
+        pool_candidates_factor=args.pool_candidates_factor,
+        kappa=args.kappa,
+        rho=args.rho,
+        alpha=args.alpha,
+        top_k_ratio=args.top_k_ratio,
+        target_diversity=args.target_diversity,
+        stagnation_limit=args.stagnation_limit,
         batch_size=args.batch_size,
         n_islands=args.n_islands,
         migration_interval=args.migration_interval,
