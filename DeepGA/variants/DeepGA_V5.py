@@ -4,10 +4,10 @@
     y Registro / Evaluación de Precisión de Poda (DeepGA_V5).
 """
 
-from Operators import *
-from EncodingClass import Encoding
-from Decoding import *
-from DistributedTraining import *
+from deepga.evolution.operators import *
+from deepga.core.encoding import Encoding
+from deepga.core.decoding import *
+from deepga.training.engine import *
 from torch.utils.data import DataLoader
 import timeit
 import torch
@@ -465,7 +465,7 @@ def green_DeepGA_v5(execution: int, memoryC: bool, train_epochs: int, train_dl: 
 
     # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V5)
     try:
-        from model_utils import save_best_model
+        from deepga.utils.model_utils import save_best_model
         save_best_model(
             variant="v5",
             execution=execution,

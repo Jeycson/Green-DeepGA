@@ -22,7 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import torch
-from experiment_manager import ExperimentManager
+from deepga.experiment.manager import ExperimentManager
 from runner_deepga import resolve_dataset_path, set_all_seeds
 
 

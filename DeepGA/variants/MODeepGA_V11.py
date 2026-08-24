@@ -25,10 +25,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from EncodingClass import Encoding
-from Decoding import decoding, CNN
-from DistributedTraining import training
-from Operators_MOV11 import (
+from deepga.core.encoding import Encoding
+from deepga.core.decoding import decoding, CNN
+from deepga.training.engine import training
+from deepga.evolution.operators_mo_v11 import (
     MOPheromoneMatrix,
     mo_guided_adaptive_mutation_v10,
     compute_mo_adaptive_mutation_rate,
@@ -439,7 +439,7 @@ def green_MODeepGA_v11(execution: int, memoryC: bool, train_epochs: int,
     }
 
     try:
-        from model_utils import save_best_model
+        from deepga.utils.model_utils import save_best_model
         save_best_model(variant="mo_v11_best_acc", execution=execution, bestind=best_acc_ind, in_channels=n_channels, out_size=out_size, n_classes=n_classes, chck_dir=chck_dir)
         save_best_model(variant="mo_v11_greenest", execution=execution, bestind=greenest_ind, in_channels=n_channels, out_size=out_size, n_classes=n_classes, chck_dir=chck_dir)
         save_best_model(variant="mo_v11_knee", execution=execution, bestind=knee_ind, in_channels=n_channels, out_size=out_size, n_classes=n_classes, chck_dir=chck_dir)

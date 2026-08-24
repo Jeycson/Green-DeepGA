@@ -2,10 +2,10 @@
 """ Created on Sep 1 2024    @author: user
 """
 
-from Operators import *
-from EncodingClass import Encoding
-from Decoding import *
-from DistributedTraining import *
+from deepga.evolution.operators import *
+from deepga.core.encoding import Encoding
+from deepga.core.decoding import *
+from deepga.training.engine import *
 from torch.utils.data import DataLoader
 import timeit
 import torch
@@ -267,7 +267,7 @@ def deepGA(execution: int, memoryC: bool, train_epochs: int, train_dl:DataLoader
 
   # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V1)
   try:
-      from model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
+      from deepga.utils.model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
       save_best_model(
           variant="v1",
           execution=execution,
@@ -347,7 +347,7 @@ def final_evaluation(execution: int, bestind: list, train_dl: DataLoader, val_dl
 
      # Guardar también formato PyTorch .pth con pesos entrenados
      try:
-         from model_utils import save_best_model
+         from deepga.utils.model_utils import save_best_model
          save_best_model(
              variant=variant,
              execution=execution,

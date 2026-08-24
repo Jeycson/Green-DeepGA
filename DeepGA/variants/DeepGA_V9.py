@@ -7,11 +7,11 @@
     - Mutación Especializada según Desempeño (Micro-ajustes para élites vs Macro-estructural para bajos rendimientos).
 """
 
-from Operators import selection
-from Operators_V9 import crossover_v7, adaptive_mutation_v9, compute_adaptive_mutation_rate
-from EncodingClass import Encoding
-from Decoding import *
-from DistributedTraining import *
+from deepga.evolution.operators import selection
+from deepga.evolution.operators_v9 import crossover_v7, adaptive_mutation_v9, compute_adaptive_mutation_rate
+from deepga.core.encoding import Encoding
+from deepga.core.decoding import *
+from deepga.training.engine import *
 from torch.utils.data import DataLoader
 import timeit
 import torch
@@ -484,7 +484,7 @@ def green_DeepGA_v9(execution: int, memoryC: bool, train_epochs: int, train_dl: 
 
     # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V9)
     try:
-        from model_utils import save_best_model
+        from deepga.utils.model_utils import save_best_model
         save_best_model(
             variant="v9",
             execution=execution,

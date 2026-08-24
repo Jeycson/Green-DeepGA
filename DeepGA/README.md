@@ -1,57 +1,86 @@
 # DeepGA
-DeepGA is a novel Neuroevolution framework to evolve Convolutional Neural Networks, using a Genetic Algorithm.  
 
-* **Encoding**: the neural encoding in DeepGA is a low-modular, flexible hybrid representation based on convolutional blocks (convolution + optional pooling) and fully connected blocks (linear layers), and binary strings that represent the dense connectivity patterns in the convolutional part of the CNN (as seen in the image below). This encoding is unbiased towards larger CNNs, such as the *Wang encoding*, which is used as the comparative standpoint \(https://link.springer.com/chapter/10.1007/978-3-030-29894-4_52). Also, a series of evolutionary operators (selection, crossover, and mutation) have been designed to deal with this encoding.
+DeepGA is a research framework for neural architecture search (NAS) by genetic algorithm. It evolves convolutional neural networks (CNNs) from a hybrid genome, trains candidate networks with PyTorch, and selects architectures by predictive performance, model complexity, or—in its multi-objective modes—by a Pareto trade-off between accuracy and estimated carbon emissions.
 
+This repository is a research codebase, not a packaged Python library. Its supported import namespace is `deepga`; use `deepga.experiment.manager.ExperimentManager` or the runnable examples in the repository root.
 
-* **Fitness**: the single objective version of DeepGA utilizes a linear aggregate fitness functions consisting on the accuracy and the number of parameters of the CNN. This aids at searching for CNN architectures with a high classification accuracy and a low number of trainable parameters (weights, biases), based on the user requirements. The Multi-Objective version of DeepGA, on the other hand, takes both the accuracy (or classification error) and the number of parameters of the CNNs directly as two objective functions.
- 
-<img src="Images/NewEncoding.png" width="581" height="364">
+## Start here
 
-## Images
+| Goal | Read / run |
+| --- | --- |
+| Install and run a small smoke experiment | [Getting started](docs/getting-started.md) |
+| Use your own image dataset | [Datasets](docs/datasets.md) |
+| Understand the implementation | [Architecture](docs/architecture.md) |
+| Design repeatable research experiments | [Experiment guide](docs/experiments.md) and [Reproducibility](docs/reproducibility.md) |
+| Tune V10–V12 with irace | [irace guide](irace_tuning/README.md) |
+| Take over maintenance or research | [Research handover](docs/research-handover.md) |
+| Find public APIs, scripts, and outputs | [Reference](docs/reference.md) |
 
-The chest X-ray images have been obtained from (https://github.com/ari-dasci/OD-covidg, https://github.com/ieee8023/covid-chestxray-dataset, and https://github.com/agchung/Actualmed-COVID-chestxray-dataset). The available images are categorized as COVID-19, viral/bacterial pneumonia, and healthy. A prepropcessing has already been applied to the entire image set in order to augment their quality. Please see https://ieeexplore.ieee.org/document/9090149 for more details.
+## Quick start
 
-## How to use DeepGA?
+The following is intentionally small and is suitable for checking an installation. It may download CIFAR-10 if `./data` does not already contain it.
 
-All the files in DeepGA are based on Python 3.7, using PyTorch as the Deep Learning framework. To use the single objective version, **DeepGA.py** must be run. Notice that the configuration of this program is made for a dual-GPU training; two CNNs are trained at the same time during the GA. The program **DistributedTraining.py** contains this configuration (but it should not be modified). It is highly encouraged to use at least two GPU to speed up the Neuroevolution process. 
+```bash
+python -m venv .venv
+source .venv/bin/activate              # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 
-The Multi-Objective version of DeepGA, **MODeepGA.py**, contains the necessary adjustments for DeepGA to work with two objective functions. Notice that, when the Wang encoding is utilized, the programs for single- and multi-objective Neuroevolution are **WangDeepGA.py** and **MOWang.py**, respectively. In both cases, the configuration needs little to no changes. 
-
-The user-available parameters of DeepGA are:
-
-```
-lr = 1e-4 #Learning rate
-
-'''Initialization'''
-min_conv = 2 #Minimum number of convolutional blocks
-max_conv = 5 #Maximum number of convolutional blocks
-min_full = 1 #Minimum number of fully-connected blocks
-max_full = 4 #Maximum number of fully-connected blocks
-
-'''Genetic Algorithm parameters'''
-cr = 0.7 #Crossover rate
-mr = 0.5 #Mutation rate
-N = 20 #Population size
-T = 50 #Number of generations
-t_size = 5 #tournament size
-w = 0.3 #penalization weight (for single-objective DeepGA only)
-max_params = 2e6
-num_epochs = 10
+python ejemplo_local.py \
+  --variant v12 --pop-size 6 --generations 1 --train-epochs 1 \
+  --final-epochs 1 --no-preload-gpu
 ```
 
-## How to properly cite DeepGA?
+For a real study, use a CUDA-enabled PyTorch installation compatible with the target GPU, choose a fixed seed, preserve the generated artifacts, and run multiple independent executions. See the reproducibility guide before treating results as comparable.
 
-DeepGA is the source code of the paper "Hybrid Encodings for Neuroevolution of Convolutional Neural Networks: A Case Study" published at the Workshop Neuroevolution at Work from the ACM Genetic and Evolutionary Computation Conference (GECCO'21). A citation of this paper when using the source code is highly appreciated:
+## What is implemented
 
+- Single-objective DeepGA variants `v1` through `v12`.
+- Multi-objective variants `mo_v9`, `mo_v10`, and `mo_v11`.
+- CIFAR-10, MedMNIST, class-folder datasets, and pre-split ImageFolder datasets.
+- Optional CodeCarbon tracking with an analytical fallback when CodeCarbon is unavailable.
+- Checkpoints, trained-model serialization, reports, CSV summaries, confusion matrices, Pareto plots, and batch experiment scripts.
+- An irace integration for tuning single-objective V10, V11, and V12.
+
+`v12` is the current recommended single-objective research baseline: it uses independent islands, diversity-aware mutation, crowding-based migration, anti-stagnation, a surrogate model, AMP support, and memory safeguards. `mo_v11` is the corresponding most feature-rich multi-objective mode.
+
+## Repository map
+
+```text
+DeepGA/
+├── deepga/                     Canonical Python package
+│   ├── core/                   Genome representation and CNN decoding
+│   ├── data/                   Dataset detection, splitting, transforms, GPU preload
+│   ├── evolution/              Genetic, pheromone, diversity, and MO operators
+│   ├── experiment/             Main orchestration API
+│   ├── training/               Candidate training/evaluation routines
+│   └── utils/                  Persistence, metrics, plots, AMP, and GPU-memory helpers
+├── variants/                   Evolutionary implementations (v1–v12, MO v9–v11)
+├── EncodingClass.py, ...       Backward-compatible import bridges; use `deepga/` in new code
+├── ejemplo_*.py                Runnable single-run examples
+├── ejecutar_experimentos.*     Batch DeepGA runs
+├── entrenar_modelo_guardado.py Re-train a saved genome/model
+├── irace_tuning/               Hyperparameter optimization workflow
+└── docs/                       Handover documentation
 ```
+
+## Citation
+
+If you use the original DeepGA encoding or code, please cite:
+
+```bibtex
 @Inproceedings{DeepGA2021,
-  author =  "Gustavo-Adolfo Vargas-Hákim and Efrén Mezura-Montes and Héctor-Gabriel Acosta-Mesa",
-  title =        "Hybrid Encodings for Neuroevolution of Convolutional Neural Networks: A Case Study",
-  booktitle =    "2021 Genetic and Evolutionary Computation Conference Companion (GECCO '21 Companion)",
-  year =         "2021",
-  publisher =    "Association for Computing Machinery",
-  pages =        "",
-  doi = 	 "10.1145/3449726.3463133",
+  author    = {Gustavo-Adolfo Vargas-Hákim and Efrén Mezura-Montes and Héctor-Gabriel Acosta-Mesa},
+  title     = {Hybrid Encodings for Neuroevolution of Convolutional Neural Networks: A Case Study},
+  booktitle = {2021 Genetic and Evolutionary Computation Conference Companion (GECCO '21 Companion)},
+  year      = {2021},
+  publisher = {Association for Computing Machinery},
+  doi       = {10.1145/3449726.3463133}
 }
 ```
+
+The current repository also contains later experimental extensions. Cite and describe the exact commit, variant, dataset split, seeds, and settings used in any resulting work.
+
+## License
+
+See [LICENSE](LICENSE).

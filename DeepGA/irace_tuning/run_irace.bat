@@ -64,11 +64,27 @@ rem Agregar el directorio de R al PATH de la sesion actual
 for %%F in ("!RSCRIPT_EXE!") do set "R_BIN_DIR=%%~dpF"
 set "PATH=!R_BIN_DIR!;%PATH%"
 
-rem 2. Crear carpetas de logs y checkpoints
+rem 2. Detectar y activar entorno virtual de Python o Conda
+if defined CONDA_PREFIX (
+    echo [OK] Entorno Conda activo detectado: !CONDA_DEFAULT_ENV! (!CONDA_PREFIX!)
+) else if not defined VIRTUAL_ENV (
+    if exist "..\.venv\Scripts\activate.bat" (
+        call "..\.venv\Scripts\activate.bat"
+        echo [OK] Entorno virtual .venv activado.
+    ) else if exist "..\venv\Scripts\activate.bat" (
+        call "..\venv\Scripts\activate.bat"
+        echo [OK] Entorno virtual venv activado.
+    ) else if exist "..\env\Scripts\activate.bat" (
+        call "..\env\Scripts\activate.bat"
+        echo [OK] Entorno virtual env activado.
+    )
+)
+
+rem 3. Crear carpetas de logs y checkpoints
 if not exist "irace_logs" mkdir "irace_logs"
 if not exist "irace_checkpoints" mkdir "irace_checkpoints"
 
-rem 3. Ejecutar irace mediante el script run_irace.R
+rem 4. Ejecutar irace mediante el script run_irace.R
 echo.
 echo Iniciando proceso de optimizacion con irace...
 echo Escenario: scenario.txt

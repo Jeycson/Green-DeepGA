@@ -5,11 +5,11 @@
     se recombinan como subgrafos coherentes, evitando incompatibilidades estructurales.
 """
 
-from Operators import selection
-from Operators_V7 import crossover_v7, mutation_v7
-from EncodingClass import Encoding
-from Decoding import *
-from DistributedTraining import *
+from deepga.evolution.operators import selection
+from deepga.evolution.operators_v7 import crossover_v7, mutation_v7
+from deepga.core.encoding import Encoding
+from deepga.core.decoding import *
+from deepga.training.engine import *
 from torch.utils.data import DataLoader
 import timeit
 import torch
@@ -229,7 +229,7 @@ def green_DeepGA_v7(execution: int, memoryC: bool, train_epochs: int, train_dl: 
 
     # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V7)
     try:
-        from model_utils import save_best_model
+        from deepga.utils.model_utils import save_best_model
         save_best_model(
             variant="v7",
             execution=execution,

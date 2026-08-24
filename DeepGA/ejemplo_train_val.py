@@ -28,7 +28,7 @@ import argparse
 
 try:
     import torch
-    from experiment_manager import ExperimentManager
+    from deepga.experiment.manager import ExperimentManager
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False

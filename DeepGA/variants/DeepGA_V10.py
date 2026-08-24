@@ -10,16 +10,16 @@
     - Probabilidad de Mutación Adaptativa Individual (Srinivas & Patnaik + Modulación Temporal).
 """
 
-from Operators import selection
-from Operators_V10 import (
+from deepga.evolution.operators import selection
+from deepga.evolution.operators_v10 import (
     PheromoneMatrix,
     guided_adaptive_mutation_v10,
     compute_adaptive_mutation_rate,
     crossover_v7
 )
-from EncodingClass import Encoding
-from Decoding import decoding, CNN
-from DistributedTraining import training
+from deepga.core.encoding import Encoding
+from deepga.core.decoding import decoding, CNN
+from deepga.training.engine import training
 from torch.utils.data import DataLoader
 import timeit
 import torch
@@ -519,7 +519,7 @@ def green_DeepGA_v10(execution: int, memoryC: bool, train_epochs: int, train_dl:
 
     # Guardar automáticamente la arquitectura del mejor modelo de esta variante (V10)
     try:
-        from model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
+        from deepga.utils.model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
         save_best_model(
             variant="v10",
             execution=execution,

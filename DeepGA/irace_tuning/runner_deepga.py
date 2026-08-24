@@ -398,7 +398,7 @@ def main():
             else:
                 device = "cpu"
 
-            from experiment_manager import ExperimentManager
+            from deepga.experiment.manager import ExperimentManager
             manager = ExperimentManager(
                 country_iso_code="MEX",
                 track_carbon=True
@@ -519,4 +519,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

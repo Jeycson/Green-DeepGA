@@ -22,9 +22,9 @@ try:
     import torch.nn as nn
     from torch.utils.data import DataLoader
 
-    from model_utils import load_saved_model, evaluate_model, generate_confusion_matrix, save_best_model
-    from dataset_loader import load_dataset_auto, load_dataset_2split
-    from DistributedTraining import training
+    from deepga.utils.model_utils import load_saved_model, evaluate_model, generate_confusion_matrix, save_best_model
+    from deepga.data.loaders import load_dataset_auto, load_dataset_2split
+    from deepga.training.engine import training
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False

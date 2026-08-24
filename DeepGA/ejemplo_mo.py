@@ -21,7 +21,7 @@ Uso personalizado (CLI):
 import os
 import argparse
 import torch
-from experiment_manager import ExperimentManager
+from deepga.experiment.manager import ExperimentManager
 
 # Clases oficiales de CIFAR-10
 CLASS_NAMES = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', 'caballo', 'barco', 'camión']

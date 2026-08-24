@@ -26,11 +26,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from EncodingClass import Encoding
-from Decoding import decoding, CNN
-from DistributedTraining import training
-from Operators import selection
-from Operators_V12 import (
+from deepga.core.encoding import Encoding
+from deepga.core.decoding import decoding, CNN
+from deepga.training.engine import training
+from deepga.evolution.operators import selection
+from deepga.evolution.operators_v12 import (
     generate_random_encoding,
     stochastic_mutation_v12,
     compute_diversity_adaptive_mutation_rate,
@@ -40,7 +40,7 @@ from Operators_V12 import (
     compute_inter_island_diversity,
     apply_island_anti_stagnation
 )
-from memory_optimizer import GPUMemoryOptimizer, safe_train_val_with_amp
+from deepga.utils.memory import GPUMemoryOptimizer, safe_train_val_with_amp
 
 # Importación de modelos para el subrogado
 try:
@@ -634,7 +634,7 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
 
     # Guardar automáticamente la arquitectura del mejor modelo de V12
     try:
-        from model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
+        from deepga.utils.model_utils import save_best_model, calculate_cnn_metrics, compute_classification_metrics, save_experiment_record
         save_best_model(
             variant="v12",
             execution=execution,

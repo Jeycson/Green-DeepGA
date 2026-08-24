@@ -16,8 +16,8 @@ import torch.nn as nn
 from torchvision import models                                                                               
                                                                                                                 
 # Importar utilidades y loaders existentes en el proyecto                                                    
-from dataset_loader import load_dataset_auto                                                                 
-from model_utils import (                                                                                    
+from deepga.data.loaders import load_dataset_auto
+from deepga.utils.model_utils import (
     compute_classification_metrics,                                                                          
     save_experiment_record,                                                                                  
     generate_confusion_matrix                                                                                
@@ -365,4 +365,4 @@ def main():
                                                                                                                 
                                                                                                                 
 if __name__ == "__main__":                                                                                   
-    main()      
+    main()

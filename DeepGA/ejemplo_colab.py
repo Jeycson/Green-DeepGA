@@ -9,7 +9,7 @@ Ejemplo de ejecución en Google Colab / Local:
 """
 
 import torch
-from experiment_manager import ExperimentManager
+from deepga.experiment.manager import ExperimentManager
 
 # Clases de CIFAR-10 (o cámbialas por las de tu dataset)
 CLASS_NAMES = ['avión', 'auto', 'pájaro', 'gato', 'ciervo', 'perro', 'rana', 'caballo', 'barco', 'camión']
