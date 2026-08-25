@@ -775,7 +775,10 @@ class ExperimentManager:
                 chck_dir=chck_dir,
                 trained_model=trained_final_model,
                 cnn_metrics=cnn_metrics,
-                auto_download=auto_download
+                auto_download=auto_download,
+                data_root=data_root,
+                seed=seed,
+                dataset_name=dataset_name
             )
 
         # 8. Consolidar reporte de resultados
