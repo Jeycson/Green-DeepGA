@@ -9,7 +9,7 @@ parameterFile = "parameters.txt"
 execDir = "./"
 
 # Script ejecutable target-runner (usar "./target-runner" en Linux/macOS o "./target-runner.bat" en Windows)
-targetRunner = "./target-runner"
+targetRunner = "./target-runner.bat"
 
 # Archivo con las instancias de entrenamiento (COVID, BreadMNIST, DermaMNIST, BloodMNIST, OrganCMNIST, PathMNIST, CIFAR-10)
 trainInstancesFile = "instances.txt"

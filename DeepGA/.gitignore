@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 data/
 checkpoints/
+checkpoints_validacion/
 carbon_logs/
 *.pth
 *.pkl
