@@ -99,7 +99,10 @@ def save_best_model(
     trained_model: nn.Module = None,
     cnn_metrics: dict = None,
     auto_download: bool = False,
-    data_root: str = None
+    data_root: str = None,
+    seed: int = None,
+    dataset_name: str = None,
+    custom_filename: str = None
 ) -> str:
     """
     Guarda la configuración (genoma), metadatos y pesos (si están disponibles)
@@ -107,7 +110,21 @@ def save_best_model(
     """
     os.makedirs(chck_dir, exist_ok=True)
     var_str = str(variant).lower()
-    model_filename = f"best_model_{var_str}_exec_{execution}.pth"
+
+    if custom_filename:
+        model_filename = custom_filename if custom_filename.endswith(".pth") else f"{custom_filename}.pth"
+        pkl_filename = custom_filename.replace(".pth", "") + ".pkl"
+    else:
+        parts = ["best_model", var_str]
+        if dataset_name:
+            ds_clean = os.path.basename(str(dataset_name)).replace("-", "_").replace(" ", "_").lower()
+            parts.append(ds_clean)
+        if seed is not None:
+            parts.append(f"seed_{seed}")
+        parts.append(f"exec_{execution}")
+        base_name = "_".join(parts)
+        model_filename = f"{base_name}.pth"
+        pkl_filename = f"{base_name}.pkl"
     model_path = os.path.join(chck_dir, model_filename)
 
     state_dict = None
@@ -208,8 +225,12 @@ def load_saved_model(model_path: str, device: torch.device = None):
     model = CNN(genome, network[0], network[1], network[2])
 
     if state_dict is not None:
-        model.load_state_dict(state_dict)
-        print(f"✅ Pesos cargados correctamente para variante {checkpoint.get('variant', '').upper()} ({in_channels} canales, entrada {out_size}x{out_size}).")
+        try:
+            model.load_state_dict(state_dict)
+            print(f"✅ Pesos cargados correctamente para variante {checkpoint.get('variant', '').upper()} ({in_channels} canales, entrada {out_size}x{out_size}).")
+        except Exception as err:
+            print(f"⚠️ Aviso: Los pesos en state_dict no coinciden con la arquitectura ({err}).")
+            print(f"ℹ️ Se usará la arquitectura del genoma con inicialización limpia para re-entrenamiento.")
     else:
         print(f"⚠️ El checkpoint contiene la arquitectura pero no pesos preentrenados finales.")
 
