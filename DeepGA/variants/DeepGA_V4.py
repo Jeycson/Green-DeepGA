@@ -7,6 +7,7 @@ from deepga.evolution.operators import *
 from deepga.core.encoding import Encoding
 from deepga.core.decoding import *
 from deepga.training.engine import *
+from deepga.utils.model_utils import get_checkpoint_filename
 from torch.utils.data import DataLoader
 import timeit
 import torch
@@ -110,7 +111,7 @@ def green_DeepGA_v4(execution: int, memoryC: bool, train_epochs: int, train_dl: 
                     N: int, T: int, t_size: int, w: float, device: torch.device, chck_dir: str,
                     n_channels: int = 3, n_classes: int = 10, out_size: int = 32, loss_func=None,
                     k_neighbors: int = 3, prune_quantile: float = 0.25,
-                    max_prune_retries: int = 3, **kwargs):
+                    max_prune_retries: int = 3, dataset_name: str = "CIFAR-10", seed: int = None, **kwargs):
     """
     Algoritmo DeepGA V4: Podado por Familiaridad y Linaje con Entrenamiento Secuencial (no paralelo).
     
@@ -125,11 +126,32 @@ def green_DeepGA_v4(execution: int, memoryC: bool, train_epochs: int, train_dl: 
     if not os.path.exists(chck_dir):  
         os.makedirs(chck_dir)      
 
+    config_name = kwargs.get('config_name', None)
+    checkpoint_filename = kwargs.get('checkpoint_filename', None)
+    force_restart = kwargs.get('force_restart', False)
+
     '''Initialize population'''
-    chkpoint_obj = Path(chck_dir + str(execution) + "_checkpoint.pkl")
-    if chkpoint_obj.exists():
+    chkpoint_name = get_checkpoint_filename(
+        variant="v4",
+        dataset_name=dataset_name,
+        config_name=config_name,
+        seed=seed,
+        execution=execution,
+        custom_filename=checkpoint_filename
+    )
+    chkpoint_file = os.path.join(chck_dir, chkpoint_name)
+    legacy_chkpoint = os.path.join(chck_dir, f"{execution}_checkpoint.pkl")
+
+    target_load = None
+    if not force_restart:
+        if os.path.exists(chkpoint_file):
+            target_load = chkpoint_file
+        elif config_name is None and seed is None and os.path.exists(legacy_chkpoint):
+            target_load = legacy_chkpoint
+
+    if target_load:
         print("Re-Initialize population (DeepGA V4)")
-        with open(chck_dir + str(execution) + "_checkpoint.pkl", "rb") as p:
+        with open(target_load, "rb") as p:
             values = pickle.load(p)
         start = timeit.default_timer() - values['time']
         pop = values['pop']
@@ -329,7 +351,7 @@ def green_DeepGA_v4(execution: int, memoryC: bool, train_epochs: int, train_dl: 
                                    evaluated_history=evaluated_history,
                                    time=time, cacheM=cacheM, meanfitpop=meanfitpop,
                                    meanAccpop=meanAccpop, meanParpop=meanParpop)
-        with open(chck_dir + str(execution) + "_checkpoint.pkl", "wb") as p:
+        with open(chkpoint_file, "wb") as p:
             pickle.dump(current_state, p)
 
         print(f"--- Fin Gen {t-1} | Podas acumuladas: {pruned_count} | Evaluaciones GPU: {evals} ---")

@@ -88,10 +88,39 @@ def download_file(file_path: str) -> bool:
         return True
 
 
+def get_checkpoint_filename(
+    variant: str = "v12",
+    dataset_name: str = None,
+    config_name: str = None,
+    seed: int = None,
+    execution: int = 1,
+    custom_filename: str = None
+) -> str:
+    """
+    Genera el nombre de archivo de checkpoint asegurando unicidad por variante, dataset,
+    configuración (o etiqueta de configuración), semilla y ejecución.
+    """
+    if custom_filename:
+        return custom_filename if custom_filename.endswith(".pkl") else f"{custom_filename}.pkl"
+
+    var_str = str(variant).lower()
+    parts = ["checkpoint", var_str]
+    if dataset_name:
+        ds_clean = os.path.basename(str(dataset_name)).replace("-", "_").replace(" ", "_").lower()
+        parts.append(ds_clean)
+    if config_name:
+        cfg_clean = str(config_name).replace("-", "_").replace(" ", "_").replace(".", "_").lower()
+        parts.append(cfg_clean)
+    if seed is not None:
+        parts.append(f"seed_{seed}")
+    parts.append(f"exec_{execution}")
+    return "_".join(parts) + ".pkl"
+
+
 def save_best_model(
-    variant: str,
-    execution: int,
-    bestind: list,
+    variant: str = "v9",
+    execution: int = 1,
+    bestind: list = None,
     in_channels: int = 3,
     out_size: int = 32,
     n_classes: int = 10,
@@ -102,7 +131,8 @@ def save_best_model(
     data_root: str = None,
     seed: int = None,
     dataset_name: str = None,
-    custom_filename: str = None
+    custom_filename: str = None,
+    config_name: str = None
 ) -> str:
     """
     Guarda la configuración (genoma), metadatos y pesos (si están disponibles)
@@ -119,6 +149,9 @@ def save_best_model(
         if dataset_name:
             ds_clean = os.path.basename(str(dataset_name)).replace("-", "_").replace(" ", "_").lower()
             parts.append(ds_clean)
+        if config_name:
+            cfg_clean = str(config_name).replace("-", "_").replace(" ", "_").replace(".", "_").lower()
+            parts.append(cfg_clean)
         if seed is not None:
             parts.append(f"seed_{seed}")
         parts.append(f"exec_{execution}")

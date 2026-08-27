@@ -449,7 +449,10 @@ class ExperimentManager:
         val_ratio: float = 0.15,
         custom_train_dl: DataLoader = None,
         custom_val_dl: DataLoader = None,
-        custom_class_names: list = None
+        custom_class_names: list = None,
+        config_name: str = None,
+        checkpoint_filename: str = None,
+        force_restart: bool = False
     ):
         """
         Ejecuta la variante seleccionada de DeepGA (v1 .. v12, mo_v9 .. mo_v11) sobre CIFAR-10 o cualquier dataset personalizado.
@@ -565,7 +568,10 @@ class ExperimentManager:
             dataset_name=dataset_name,
             test_dl=test_dl,
             seed=seed if seed is not None else execution,
-            save_txt=False
+            save_txt=False,
+            config_name=config_name,
+            checkpoint_filename=checkpoint_filename,
+            force_restart=force_restart
         )
 
         pruned_stats = None
@@ -778,7 +784,8 @@ class ExperimentManager:
                 auto_download=auto_download,
                 data_root=data_root,
                 seed=seed,
-                dataset_name=dataset_name
+                dataset_name=dataset_name,
+                config_name=config_name
             )
 
         # 8. Consolidar reporte de resultados
@@ -826,6 +833,7 @@ class ExperimentManager:
         metrics_summary = {
             "variant": variant.upper(),
             "method_name": method_display,
+            "config_name": config_name,
             "dataset_name": dataset_name,
             "execution": execution,
             "is_multiobjective": is_mo,

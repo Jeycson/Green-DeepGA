@@ -18,6 +18,7 @@ import time
 import timeit
 import pickle
 from pathlib import Path
+from deepga.utils.model_utils import get_checkpoint_filename
 
 import numpy as np
 import pandas as pd
@@ -62,7 +63,8 @@ def green_MODeepGA_v11(execution: int, memoryC: bool, train_epochs: int,
                        pool_candidates_factor: int = 5,
                        kappa: float = 0.1, mr_min: float = 0.10, mr_max: float = 0.85,
                        rho: float = 0.10, alpha: float = 1.2, top_k_ratio: float = 0.35,
-                       country_iso_code: str = "MEX", **kwargs):
+                       country_iso_code: str = "MEX",
+                       dataset_name: str = "CIFAR-10", seed: int = None, **kwargs):
     """
     Algoritmo Multi-Objetivo MO-DeepGA V11 (Island Model + ACO + Subrogado):
     - Divide la población total N entre `n_islands` islas independientes.
@@ -89,11 +91,32 @@ def green_MODeepGA_v11(execution: int, memoryC: bool, train_epochs: int,
         for _ in range(n_islands)
     ]
 
+    config_name = kwargs.get('config_name', None)
+    checkpoint_filename = kwargs.get('checkpoint_filename', None)
+    force_restart = kwargs.get('force_restart', False)
+
     '''Inicialización de Población Multi-Objetivo por Islas'''
-    chkpoint_obj = Path(chck_dir + str(execution) + "_mo_v11_checkpoint.pkl")
-    if chkpoint_obj.exists():
+    chkpoint_name = get_checkpoint_filename(
+        variant="mo_v11",
+        dataset_name=dataset_name,
+        config_name=config_name,
+        seed=seed,
+        execution=execution,
+        custom_filename=checkpoint_filename
+    )
+    chkpoint_file = os.path.join(chck_dir, chkpoint_name)
+    legacy_chkpoint = os.path.join(chck_dir, f"{execution}_mo_v11_checkpoint.pkl")
+
+    target_load = None
+    if not force_restart:
+        if os.path.exists(chkpoint_file):
+            target_load = chkpoint_file
+        elif config_name is None and seed is None and os.path.exists(legacy_chkpoint):
+            target_load = legacy_chkpoint
+
+    if target_load:
         print(f"Re-Initialize population (MO-DeepGA V11 - {n_islands} Multi-Objective Islands)", flush=True)
-        with open(chck_dir + str(execution) + "_mo_v11_checkpoint.pkl", "rb") as p:
+        with open(target_load, "rb") as p:
             values = pickle.load(p)
         start = timeit.default_timer() - values['time']
         islands_pop = values['islands_pop']
@@ -391,7 +414,7 @@ def green_MODeepGA_v11(execution: int, memoryC: bool, train_epochs: int,
             evaluated_history=evaluated_history,
             time=time_elapsed, cacheM=cacheM
         )
-        with open(chck_dir + str(execution) + "_mo_v11_checkpoint.pkl", "wb") as p:
+        with open(chkpoint_file, "wb") as p:
             pickle.dump(current_state, p)
 
         print(f"--- Fin Gen {t-1} | Frente Pareto Global: {len(pareto_front)} redes | HV: {hv:.2f} | Div Inter-Islas: {inter_div:.4f} | GPU Evals: {evals} ---")

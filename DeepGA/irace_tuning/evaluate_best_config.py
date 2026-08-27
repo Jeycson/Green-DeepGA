@@ -29,9 +29,12 @@ from runner_deepga import resolve_dataset_path, set_all_seeds
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluación y Entrenamiento Final de Mejor Configuración DeepGA")
 
-    # Opción para cargar configuración desde archivo JSON
     parser.add_argument("--config-json", type=str, default=None,
                         help="Ruta a archivo JSON con la configuración (ej: best_configuration.json)")
+    parser.add_argument("--config-name", type=str, default=None,
+                        help="Nombre/etiqueta única para la configuración")
+    parser.add_argument("--force-restart", action="store_true", default=False,
+                        help="Ignorar checkpoints previos y comenzar desde cero")
 
     # Dataset a evaluar
     parser.add_argument("--dataset", type=str, default="Tumour_3",
@@ -120,6 +123,8 @@ def main():
     print(f"📌 Carpeta de salida:  {out_dir.resolve()}")
     print("=" * 65 + "\n")
 
+    config_name = args.config_name or (Path(args.config_json).stem if args.config_json else None)
+
     manager = ExperimentManager(
         country_iso_code="MEX",
         track_carbon=True
@@ -128,6 +133,9 @@ def main():
     resultados = manager.run_deepga(
         variant=args.variant,
         execution=args.execution,
+        seed=args.seed,
+        config_name=config_name,
+        force_restart=args.force_restart,
         population_size=args.pop_size,
         generations=args.generations,
         train_epochs=args.train_epochs,

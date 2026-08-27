@@ -408,6 +408,7 @@ def main():
             resultados = manager.run_deepga(
                 variant=args.variant,
                 execution=int(args.seed % 100000),
+                seed=args.seed,
                 population_size=args.pop_size,
                 generations=args.generations,
                 train_epochs=args.train_epochs,

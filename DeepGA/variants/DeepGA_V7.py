@@ -10,6 +10,7 @@ from deepga.evolution.operators_v7 import crossover_v7, mutation_v7
 from deepga.core.encoding import Encoding
 from deepga.core.decoding import *
 from deepga.training.engine import *
+from deepga.utils.model_utils import get_checkpoint_filename
 from torch.utils.data import DataLoader
 import timeit
 import torch
@@ -42,7 +43,8 @@ def _evaluate_individual(e, n_channels: int, out_size: int, n_classes: int, devi
 def green_DeepGA_v7(execution: int, memoryC: bool, train_epochs: int, train_dl: DataLoader, val_dl: DataLoader, lr: float,
                     min_conv: int, max_conv: int, min_full: int, max_full: int, max_params: int, cr: float, mr: float,  
                     N: int, T: int, t_size: int, w: float, device: torch.device, chck_dir: str,
-                    n_channels: int = 3, n_classes: int = 10, out_size: int = 32, loss_func=None, **kwargs):
+                    n_channels: int = 3, n_classes: int = 10, out_size: int = 32, loss_func=None,
+                    dataset_name: str = "CIFAR-10", seed: int = None, **kwargs):
     """
     Algoritmo DeepGA V7:
     - Operadores Genéticos Estructurados (Cruce y Mutación Topológica V7).
@@ -56,11 +58,32 @@ def green_DeepGA_v7(execution: int, memoryC: bool, train_epochs: int, train_dl: 
     if not os.path.exists(chck_dir):  
         os.makedirs(chck_dir)      
 
+    config_name = kwargs.get('config_name', None)
+    checkpoint_filename = kwargs.get('checkpoint_filename', None)
+    force_restart = kwargs.get('force_restart', False)
+
     '''Initialize population'''
-    chkpoint_obj = Path(chck_dir + str(execution) + "_checkpoint.pkl")
-    if chkpoint_obj.exists():
+    chkpoint_name = get_checkpoint_filename(
+        variant="v7",
+        dataset_name=dataset_name,
+        config_name=config_name,
+        seed=seed,
+        execution=execution,
+        custom_filename=checkpoint_filename
+    )
+    chkpoint_file = os.path.join(chck_dir, chkpoint_name)
+    legacy_chkpoint = os.path.join(chck_dir, f"{execution}_checkpoint.pkl")
+
+    target_load = None
+    if not force_restart:
+        if os.path.exists(chkpoint_file):
+            target_load = chkpoint_file
+        elif config_name is None and seed is None and os.path.exists(legacy_chkpoint):
+            target_load = legacy_chkpoint
+
+    if target_load:
         print("Re-Initialize population (DeepGA V7 - Structured Operators)")
-        with open(chck_dir + str(execution) + "_checkpoint.pkl", "rb") as p:
+        with open(target_load, "rb") as p:
             values = pickle.load(p)
         start = timeit.default_timer() - values['time']
         pop = values['pop']
@@ -212,7 +235,7 @@ def green_DeepGA_v7(execution: int, memoryC: bool, train_epochs: int, train_dl: 
                                    bestParams=bestParams, t=t, evals=evals,
                                    time=time, cacheM=cacheM, meanfitpop=meanfitpop,
                                    meanAccpop=meanAccpop, meanParpop=meanParpop)
-        with open(chck_dir + str(execution) + "_checkpoint.pkl", "wb") as p:
+        with open(chkpoint_file, "wb") as p:
             pickle.dump(current_state, p)
 
         print(f"--- Fin Gen {t-1} | Evaluaciones GPU: {evals} ---")

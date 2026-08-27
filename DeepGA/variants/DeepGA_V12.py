@@ -28,6 +28,7 @@ from torch.utils.data import DataLoader
 
 from deepga.core.encoding import Encoding
 from deepga.core.decoding import decoding, CNN
+from deepga.utils.model_utils import get_checkpoint_filename
 from deepga.training.engine import training
 from deepga.evolution.operators import selection
 from deepga.evolution.operators_v12 import (
@@ -266,28 +267,40 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
     # Meta-modelo subrogado enfocado en diversidad
     surrogate = DiversitySurrogatePredictor()
 
+    config_name = kwargs.get('config_name', None)
+    checkpoint_filename = kwargs.get('checkpoint_filename', None)
+    force_restart = kwargs.get('force_restart', False)
+
     '''Inicialización de Poblaciones Multi-Isla V12'''
-    ds_clean = str(dataset_name).lower().replace('-', '').replace('_', '')
-    chkpoint_file = os.path.join(chck_dir, f"checkpoint_v12_{ds_clean}_exec_{execution}.pkl")
+    chkpoint_name = get_checkpoint_filename(
+        variant="v12",
+        dataset_name=dataset_name,
+        config_name=config_name,
+        seed=seed,
+        execution=execution,
+        custom_filename=checkpoint_filename
+    )
+    chkpoint_file = os.path.join(chck_dir, chkpoint_name)
     legacy_chkpoint = os.path.join(chck_dir, f"{execution}_checkpoint.pkl")
 
     values = None
-    if os.path.exists(chkpoint_file):
-        try:
-            with open(chkpoint_file, "rb") as p:
-                loaded = pickle.load(p)
-            if isinstance(loaded, dict) and 'islands_pop' in loaded:
-                values = loaded
-        except Exception:
-            values = None
-    elif os.path.exists(legacy_chkpoint):
-        try:
-            with open(legacy_chkpoint, "rb") as p:
-                loaded = pickle.load(p)
-            if isinstance(loaded, dict) and 'islands_pop' in loaded:
-                values = loaded
-        except Exception:
-            values = None
+    if not force_restart:
+        if os.path.exists(chkpoint_file):
+            try:
+                with open(chkpoint_file, "rb") as p:
+                    loaded = pickle.load(p)
+                if isinstance(loaded, dict) and 'islands_pop' in loaded:
+                    values = loaded
+            except Exception:
+                values = None
+        elif config_name is None and seed is None and os.path.exists(legacy_chkpoint):
+            try:
+                with open(legacy_chkpoint, "rb") as p:
+                    loaded = pickle.load(p)
+                if isinstance(loaded, dict) and 'islands_pop' in loaded:
+                    values = loaded
+            except Exception:
+                values = None
 
     if values is not None:
         print(f"Re-Initialize population (DeepGA V12 - {n_islands} Pure Islands | Migration every {migration_interval} gens | Memory-Optimized)", flush=True)
@@ -579,7 +592,7 @@ def green_DeepGA_v12(execution: int, memoryC: bool, train_epochs: int,
             meanAccpop=meanAccpop,
             meanParpop=meanParpop
         )
-        with open(os.path.join(chck_dir, f"checkpoint_v12_{ds_clean}_exec_{execution}.pkl"), "wb") as p:
+        with open(chkpoint_file, "wb") as p:
             pickle.dump(current_state, p)
 
         avg_mae = np.mean(prediction_errors[-10:]) if prediction_errors else 0.0

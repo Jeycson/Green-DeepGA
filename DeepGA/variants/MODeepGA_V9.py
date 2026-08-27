@@ -19,6 +19,7 @@ import time
 import timeit
 import pickle
 from pathlib import Path
+from deepga.utils.model_utils import get_checkpoint_filename
 
 import numpy as np
 import pandas as pd
@@ -406,7 +407,8 @@ def green_MODeepGA_v9(execution: int, memoryC: bool, train_epochs: int,
                       n_channels: int = 3, n_classes: int = 10, out_size: int = 32,
                       loss_func=None, pool_candidates_factor: int = 5,
                       kappa: float = 0.1, mr_min: float = 0.10, mr_max: float = 0.85,
-                      country_iso_code: str = "MEX", **kwargs):
+                      country_iso_code: str = "MEX",
+                      dataset_name: str = "CIFAR-10", seed: int = None, **kwargs):
     """
     Algoritmo Multi-Objetivo MO-DeepGA V9:
     - Espacio Bi-Objetivo: Precisión (↑ Max) vs Huella de Carbono gCO2eq (↓ Min).
@@ -423,11 +425,32 @@ def green_MODeepGA_v9(execution: int, memoryC: bool, train_epochs: int,
 
     surrogate = MOSurrogatePredictor()
 
+    config_name = kwargs.get('config_name', None)
+    checkpoint_filename = kwargs.get('checkpoint_filename', None)
+    force_restart = kwargs.get('force_restart', False)
+
     '''Inicialización de Población Multi-Objetivo'''
-    chkpoint_obj = Path(chck_dir + str(execution) + "_mo_v9_checkpoint.pkl")
-    if chkpoint_obj.exists():
+    chkpoint_name = get_checkpoint_filename(
+        variant="mo_v9",
+        dataset_name=dataset_name,
+        config_name=config_name,
+        seed=seed,
+        execution=execution,
+        custom_filename=checkpoint_filename
+    )
+    chkpoint_file = os.path.join(chck_dir, chkpoint_name)
+    legacy_chkpoint = os.path.join(chck_dir, f"{execution}_mo_v9_checkpoint.pkl")
+
+    target_load = None
+    if not force_restart:
+        if os.path.exists(chkpoint_file):
+            target_load = chkpoint_file
+        elif config_name is None and seed is None and os.path.exists(legacy_chkpoint):
+            target_load = legacy_chkpoint
+
+    if target_load:
         print("Re-Initialize population (MO-DeepGA V9 - Multi-Objective Surrogate + NSGA-II)")
-        with open(chck_dir + str(execution) + "_mo_v9_checkpoint.pkl", "rb") as p:
+        with open(target_load, "rb") as p:
             values = pickle.load(p)
         start = timeit.default_timer() - values['time']
         pop = values['pop']
@@ -700,7 +723,7 @@ def green_MODeepGA_v9(execution: int, memoryC: bool, train_epochs: int,
             evaluated_history=evaluated_history,
             time=time_elapsed, cacheM=cacheM
         )
-        with open(chck_dir + str(execution) + "_mo_v9_checkpoint.pkl", "wb") as p:
+        with open(chkpoint_file, "wb") as p:
             pickle.dump(current_state, p)
 
         mae_acc = np.mean(prediction_errors_acc[-10:]) if prediction_errors_acc else 0.0

@@ -42,6 +42,10 @@ def parse_args():
     # --- Archivo de Configuración JSON Opcional ---
     parser.add_argument("--config-json", type=str, default=None,
                         help="Ruta al archivo JSON generado por irace (ej. irace_tuning/best_configuration.json)")
+    parser.add_argument("--config-name", "--config-tag", type=str, default=None, dest="config_name",
+                        help="Nombre/etiqueta única para la configuración (default: nombre del JSON o derivado de params)")
+    parser.add_argument("--force-restart", "--no-resume", action="store_true", default=False, dest="force_restart",
+                        help="Fuerza un inicio limpio ignorando cualquier checkpoint previo existente")
 
     # --- Control de Repeticiones y Semillas ---
     parser.add_argument("--num-runs", "--repetitions", type=int, default=10, dest="num_runs",
@@ -242,6 +246,16 @@ def main():
     if args.config_json:
         load_json_config(args, args.config_json)
 
+    # Determinar nombre / tag para la configuración evaluada
+    if args.config_name:
+        config_name = args.config_name
+    elif args.config_json:
+        config_name = Path(args.config_json).stem
+    else:
+        config_name = f"cfg_{args.variant.lower()}_gen{args.generations}_pop{args.pop_size}"
+
+    config_clean = str(config_name).replace("-", "_").replace(" ", "_").replace(".", "_").lower()
+
     img_size, in_channels = resolve_auto_dataset_params(args)
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -257,6 +271,7 @@ def main():
     print("\n" + "=" * 80)
     print("   VALIDACIÓN AUTOMATIZADA DE RESULTADOS DE IRACE EN GREEN DEEPGA")
     print("=" * 80)
+    print(f"📌 Configuración (Tag):     {config_name}")
     print(f"📌 Variante:                 {args.variant.upper()}")
     print(f"📌 Total de Repeticiones:    {args.num_runs} corridas independientes")
     print(f"📌 Rango de Semillas:        {args.start_seed} a {end_seed}")
@@ -264,6 +279,8 @@ def main():
     print(f"📌 Dataset / Resolución:     {args.data_root} | {img_size}x{img_size} ({in_channels} canal/es)")
     print(f"📌 Dispositivo de Cómputo:   {device}" + (f" ({torch.cuda.get_device_name(0)})" if device.type == "cuda" and torch.cuda.is_available() else " (CPU)"))
     print(f"📌 Directorio de Resultados: {out_dir.resolve()}")
+    if args.force_restart:
+        print(f"📌 Reinicio Forzado:         ACTIVADO (ignora checkpoints anteriores)")
     print("-" * 80)
     print("📋 HIPERPARÁMETROS OPTIMIZADOS A VALIDAR:")
     print(f"   • Población (pop_size)     : {args.pop_size:<6} | Generaciones (generations) : {args.generations}")
@@ -290,12 +307,16 @@ def main():
     current_exec = args.start_exec
     start_time_all = time.time()
 
-    summary_csv_path = out_dir / "validacion_irace_10_corridas.csv"
-    summary_txt_path = out_dir / "validacion_irace_10_corridas.txt"
+    summary_csv_path = out_dir / f"validacion_irace_{config_clean}_{args.num_runs}_corridas.csv"
+    summary_txt_path = out_dir / f"validacion_irace_{config_clean}_{args.num_runs}_corridas.txt"
+    default_summary_csv = out_dir / "validacion_irace_10_corridas.csv"
+    default_summary_txt = out_dir / "validacion_irace_10_corridas.txt"
+    stats_csv_path = out_dir / f"estadisticas_globales_{config_clean}_validacion.csv"
+    default_stats_csv = out_dir / "estadisticas_globales_validacion.csv"
 
     for run_idx, seed in enumerate(range(args.start_seed, end_seed + 1), start=1):
         print("\n" + "#" * 80)
-        print(f"▶ [CORRIDA {run_idx}/{args.num_runs}] Semilla: {seed} | Execution ID: {current_exec} | Variante: {args.variant.upper()}")
+        print(f"▶ [CORRIDA {run_idx}/{args.num_runs}] Semilla: {seed} | Execution ID: {current_exec} | Variante: {args.variant.upper()} | Config: {config_name}")
         print("#" * 80)
 
         torch.manual_seed(seed)
@@ -310,6 +331,8 @@ def main():
                 variant=args.variant,
                 execution=current_exec,
                 seed=seed,
+                config_name=config_name,
+                force_restart=args.force_restart,
                 population_size=args.pop_size,
                 generations=args.generations,
                 train_epochs=args.train_epochs,
@@ -373,13 +396,13 @@ def main():
             test_dl = resultados.get("test_dataloader")
             class_names = resultados.get("class_names", [f"Clase_{i}" for i in range(10)])
             if test_dl is not None and saved_model_path and os.path.exists(saved_model_path):
-                cm_save_path = out_dir / f"matriz_confusion_{args.variant.lower()}_seed_{seed}_exec_{current_exec}.png"
+                cm_save_path = out_dir / f"matriz_confusion_{args.variant.lower()}_{config_clean}_seed_{seed}_exec_{current_exec}.png"
                 try:
                     manager.generate_confusion_matrix(
                         model_or_path=saved_model_path,
                         dataloader=test_dl,
                         class_names=class_names,
-                        title=f"Matriz de Confusión - {args.variant.upper()} (Semilla {seed})",
+                        title=f"Matriz de Confusión - {args.variant.upper()} ({config_name}, Semilla {seed})",
                         save_fig_path=str(cm_save_path),
                         auto_download_plot=False
                     )
@@ -388,6 +411,7 @@ def main():
 
             run_row = {
                 "Run": run_idx,
+                "Config": config_name,
                 "Seed": seed,
                 "Execution": current_exec,
                 "Variant": args.variant.upper(),
@@ -418,6 +442,8 @@ def main():
             df_current = pd.DataFrame(results_list)
             df_current.to_csv(summary_csv_path, index=False)
             df_current.to_csv(summary_txt_path, sep="\t", index=False)
+            df_current.to_csv(default_summary_csv, index=False)
+            df_current.to_csv(default_summary_txt, sep="\t", index=False)
 
         except Exception as e:
             print(f"\n❌ [ERROR] Falló la corrida #{run_idx} con Semilla {seed} y Exec {current_exec}: {e}")
@@ -466,8 +492,8 @@ def main():
             print(f"   • {col:<18} : {mean_val:>10.4f} ± {std_val:<8.4f} {unit}  [Min: {min_val:.2f}, Max: {max_val:.2f}]")
 
     df_stats = pd.DataFrame(stats_summary)
-    stats_csv_path = out_dir / "estadisticas_globales_validacion.csv"
     df_stats.to_csv(stats_csv_path, index=False)
+    df_stats.to_csv(default_stats_csv, index=False)
 
     print("\n" + "=" * 80)
     print(f"🎉 VALIDACIÓN FINALIZADA CON ÉXITO")
