@@ -1,0 +1,22 @@
+{
+  "variant": "v12",
+  "lr": 6e-04,
+  "pop_size": 21,
+  "generations": 49,
+  "t_size": 4,
+  "cr": 0.8249,
+  "mr": 0.6696,
+  "mr_min": 0.1562,
+  "mr_max": 0.8093,
+  "final_epoch": 6,
+  "pool_candidates_factor": 3,
+  "kappa": 0.1776,
+  "rho": 0.2824,
+  "alpha": 0.527,
+  "top_k_ratio": 0.2815,
+  "n_islands": 4,
+  "migration_interval": 11,
+  "migration_size": 1,
+  "target_diversity": 0.3443,
+  "stagnation_limit": 3
+}

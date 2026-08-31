@@ -1,0 +1,20 @@
+{
+  "variant": "v10",
+  "lr": 9e-04,
+  "pop_size": 17,
+  "generations": 32,
+  "t_size": 5,
+  "cr": 0.5436,
+  "mr": 0.2321,
+  "mr_min": 0.175,
+  "mr_max": 0.9218,
+  "final_epoch": 9,
+  "pool_candidates_factor": 3,
+  "kappa": 0.1464,
+  "rho": 0.2824,
+  "alpha": 0.527,
+  "top_k_ratio": 0.2815,
+  "n_islands": 1,
+  "migration_interval": 32,
+  "migration_size": 1
+}
