@@ -16,6 +16,7 @@ __all__ = [
     "DeepGAV10Search",
     "BaseEvaluator",
     "CNNEvaluator",
+    "ModelEvaluator",
     "CustomEvaluator",
 ]
 
@@ -25,11 +26,12 @@ def __getattr__(name: str):
     if name in ("DeepGASearch", "DeepGAV10Search"):
         from deepga.search import DeepGASearch, DeepGAV10Search
         return DeepGASearch if name == "DeepGASearch" else DeepGAV10Search
-    elif name in ("BaseEvaluator", "CNNEvaluator", "CustomEvaluator"):
-        from deepga.core.evaluator import BaseEvaluator, CNNEvaluator, CustomEvaluator
+    elif name in ("BaseEvaluator", "CNNEvaluator", "ModelEvaluator", "CustomEvaluator"):
+        from deepga.core.evaluator import BaseEvaluator, CNNEvaluator, ModelEvaluator, CustomEvaluator
         mapping = {
             "BaseEvaluator": BaseEvaluator,
             "CNNEvaluator": CNNEvaluator,
+            "ModelEvaluator": ModelEvaluator,
             "CustomEvaluator": CustomEvaluator
         }
         return mapping[name]

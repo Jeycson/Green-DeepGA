@@ -3,6 +3,8 @@
 CLI de DeepGA (Interfaz por Línea de Comandos).
 Permite ejecutar y monitorear la optimización evolutiva V10 directamente desde la terminal,
 así como lanzar la interfaz gráfica web.
+
+Por defecto utiliza la configuración óptima calibrada por irace (best_configuration_4.json).
 """
 
 import sys
@@ -14,10 +16,11 @@ from deepga.config import DeepGAV10Config
 
 
 def cmd_v10_info(args):
-    """Muestra detalles técnicos y parámetros de DeepGA V10."""
-    print("=" * 65)
+    """Muestra detalles técnicos y parámetros óptimos de DeepGA V10."""
+    print("=" * 68)
     print("🧠 DeepGA V10 (ACO-Enhanced Pheromone-Guided Evolution)")
-    print("=" * 65)
+    print("   [Configuración Óptima por Defecto: irace best_configuration_4]")
+    print("=" * 68)
     print("""
 Características principales de la Versión 10:
   1. Matriz de Feromonas Arquitectónicas (ACO-NAS Pheromone Matrix):
@@ -30,37 +33,49 @@ Características principales de la Versión 10:
   5. Cruce Topológico Emparejado V7 (Graph-Based Coherent Crossover).
   6. Mutación Adaptativa Individual (Srinivas & Patnaik).
     """)
-    default_cfg = DeepGAV10Config()
-    print("Parámetros por defecto:")
+    default_cfg = DeepGAV10Config.optimal()
+    print("Parámetros Óptimos Calibrados (irace):")
     for k, v in default_cfg.to_dict().items():
-        print(f"  --{k.replace('_', '-')}: {v}")
-    print("=" * 65)
+        if k != "expert_mode":
+            print(f"  --{k.replace('_', '-')}: {v}")
+    print("=" * 68)
 
 
 def cmd_v10_run(args):
-    """Ejecuta una búsqueda evolutiva con DeepGA V10."""
+    """Ejecuta una búsqueda evolutiva con DeepGA V10 usando configuración óptima."""
     from deepga import DeepGASearch
 
-    # Cargar configuración base o crear una nueva
+    # Cargar configuración base (óptima por defecto) o desde JSON
     if args.config and os.path.exists(args.config):
         print(f"📄 Cargando configuración desde '{args.config}'...")
         cfg = DeepGAV10Config.load_json(args.config)
     else:
-        cfg = DeepGAV10Config()
+        cfg = DeepGAV10Config.optimal()
 
-    # Sobrescribir con banderas de la CLI si se proporcionaron
-    if args.generations is not None:
-        cfg.generations = args.generations
-    if args.pop_size is not None:
-        cfg.pop_size = args.pop_size
-    if args.train_epochs is not None:
-        cfg.train_epochs = args.train_epochs
-    if args.final_epochs is not None:
-        cfg.final_epochs = args.final_epochs
-    if args.batch_size is not None:
-        cfg.batch_size = args.batch_size
-    if args.lr is not None:
-        cfg.learning_rate = args.lr
+    # Verificar si el usuario intenta alterar parámetros sin modo experto
+    overrides = {
+        "generations": args.generations,
+        "pop_size": args.pop_size,
+        "train_epochs": args.train_epochs,
+        "final_epochs": args.final_epochs,
+        "batch_size": args.batch_size,
+        "learning_rate": args.lr
+    }
+    has_overrides = any(v is not None for v in overrides.values())
+
+    if has_overrides:
+        if not args.expert:
+            print("\n⚠️  [AVISO]: Has especificado hiperparámetros manuales (--pop-size, --generations, etc.).")
+            print("   DeepGA V10 está calibrado para máxima convergencia con la configuración óptima de irace.")
+            print("   Para aplicar estas modificaciones conscientemente, añade la bandera '--expert'.")
+            print("   Ejecutando con la configuración óptima por defecto...\n")
+        else:
+            cfg.expert_mode = True
+            for k, v in overrides.items():
+                if v is not None:
+                    setattr(cfg, k, v)
+            print("🔧 [Modo Experto Activo]: Hiperparámetros modificados manualmente.")
+
     if args.device is not None:
         cfg.device = args.device
     if args.seed is not None:
@@ -68,7 +83,7 @@ def cmd_v10_run(args):
     if args.output_dir is not None:
         cfg.output_dir = args.output_dir
 
-    print(f"🔧 Configuración lista: Pop={cfg.pop_size}, Gens={cfg.generations}, Device={cfg.device}")
+    print(f"🚀 Configuración en uso: Pop={cfg.pop_size}, Gens={cfg.generations}, LR={cfg.learning_rate}, Device={cfg.device}")
     searcher = DeepGASearch(config=cfg)
 
     # Iniciar búsqueda con dataset personalizado o CIFAR-10
@@ -108,22 +123,26 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Comando a ejecutar")
 
     # Comando 'info'
-    p_info = subparsers.add_parser("info", help="Ver detalles y parámetros de DeepGA V10")
+    p_info = subparsers.add_parser("info", help="Ver detalles y parámetros óptimos de DeepGA V10")
     p_info.set_defaults(func=cmd_v10_info)
 
     # Comando 'run'
     p_run = subparsers.add_parser("run", help="Ejecutar búsqueda evolutiva DeepGA V10")
     p_run.add_argument("--dataset", type=str, default=None, help="Ruta a la carpeta del dataset o 'cifar10'")
     p_run.add_argument("--config", type=str, default=None, help="Ruta a un archivo config.json")
-    p_run.add_argument("--generations", "-g", type=int, default=None, help="Número de generaciones")
-    p_run.add_argument("--pop-size", "-p", type=int, default=None, help="Tamaño de la población")
-    p_run.add_argument("--train-epochs", "-e", type=int, default=None, help="Épocas de evaluación rápida")
-    p_run.add_argument("--final-epochs", type=int, default=None, help="Épocas de re-entrenamiento final")
-    p_run.add_argument("--batch-size", "-b", type=int, default=None, help="Tamaño del batch")
-    p_run.add_argument("--lr", type=float, default=None, help="Learning rate")
     p_run.add_argument("--device", type=str, default=None, help="Dispositivo ('cuda', 'cpu' o 'auto')")
     p_run.add_argument("--seed", type=int, default=None, help="Semilla aleatoria")
     p_run.add_argument("--output-dir", type=str, default=None, help="Directorio para guardar resultados")
+
+    # Parámetros avanzados / protegidos
+    expert_group = p_run.add_argument_group("Opciones Avanzadas (Requiere --expert para aplicar)")
+    expert_group.add_argument("--expert", action="store_true", help="Habilita la modificación de la configuración óptima")
+    expert_group.add_argument("--generations", "-g", type=int, default=None, help="Número de generaciones (óptimo: 32)")
+    expert_group.add_argument("--pop-size", "-p", type=int, default=None, help="Tamaño de la población (óptimo: 17)")
+    expert_group.add_argument("--train-epochs", "-e", type=int, default=None, help="Épocas de evaluación rápida (óptimo: 2)")
+    expert_group.add_argument("--final-epochs", type=int, default=None, help="Épocas de re-entrenamiento final (óptimo: 9)")
+    expert_group.add_argument("--batch-size", "-b", type=int, default=None, help="Tamaño del batch")
+    expert_group.add_argument("--lr", type=float, default=None, help="Learning rate (óptimo: 0.0009)")
     p_run.set_defaults(func=cmd_v10_run)
 
     # Comando 'ui'

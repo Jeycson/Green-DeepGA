@@ -48,11 +48,17 @@ def extract_genome_features(e, max_conv: int = 5, max_full: int = 4) -> np.ndarr
     Convierte un genoma de DeepGA (Encoding) en un vector numérico de características
     de tamaño fijo para ser consumido por el modelo subrogado.
     """
+    if hasattr(e, 'extract_features') and callable(e.extract_features):
+        return e.extract_features()
+    if not hasattr(e, 'first_level'):
+        total_dim = 2 + (max_conv * 5) + (max_full * 2)
+        return np.zeros(total_dim, dtype=np.float32)
+
     features = []
 
     # 1. Dimensiones macroestructurales
-    features.append(float(e.n_conv) / float(max_conv))
-    features.append(float(e.n_full) / float(max_full))
+    features.append(float(getattr(e, 'n_conv', 1)) / float(max_conv))
+    features.append(float(getattr(e, 'n_full', 1)) / float(max_full))
 
     # 2. Características por capa convolucional (fijo a max_conv)
     total_filters = 0.0
@@ -219,6 +225,15 @@ def green_DeepGA_v10(execution: int, memoryC: bool, train_epochs: int, train_dl:
     config_name = kwargs.get('config_name', None)
     checkpoint_filename = kwargs.get('checkpoint_filename', None)
     force_restart = kwargs.get('force_restart', False)
+    custom_evaluator = kwargs.get('evaluator', None)
+
+    def _eval(cand):
+        if custom_evaluator is not None:
+            return custom_evaluator.evaluate(cand)
+        return _evaluate_individual(
+            cand, n_channels, out_size, n_classes, device1,
+            num_epochs, loss_func, train_dl, val_dl, lr, w, max_params
+        )
 
     '''Initialize population'''
     chkpoint_name = get_checkpoint_filename(
@@ -302,29 +317,23 @@ def green_DeepGA_v10(execution: int, memoryC: bool, train_epochs: int, train_dl:
         while len(pop) < N:
             e1 = pheromones.generate_guided_encoding(min_conv, max_conv, min_full, max_full, alpha=1.0)
             if memoryC:
-                strIDe1 = str([e1.n_conv, e1.n_full, e1.first_level, e1.second_level])
+                strIDe1 = str([e1.n_conv, e1.n_full, e1.first_level, e1.second_level]) if hasattr(e1, 'first_level') else str(e1)
                 if strIDe1 in cacheM:
                     fit1, acc1, pars1 = cacheM[strIDe1]
                     print(f"[Cache Init V10] Fit: {fit1:.4f}, Acc: {acc1:.2f}%, Params: {pars1}", flush=True)
                     pop.append([e1, fit1, acc1, pars1])
                     evaluated_history.append((e1, fit1, acc1))
                 else:
-                    print(f"[Init V10] Evaluando individuo {len(pop)+1}/{N} en GPU...", flush=True)
-                    fit1, acc1, pars1 = _evaluate_individual(
-                        e1, n_channels, out_size, n_classes, device1,
-                        num_epochs, loss_func, train_dl, val_dl, lr, w, max_params
-                    )
+                    print(f"[Init V10] Evaluando individuo {len(pop)+1}/{N}...", flush=True)
+                    fit1, acc1, pars1 = _eval(e1)
                     cacheM[strIDe1] = [fit1, acc1, pars1]
                     evals += 1
                     evaluated_history.append((e1, fit1, acc1))
                     print(f"[Sequential Init V10] Ind {len(pop)+1}/{N} -> Fit: {fit1:.4f}, Acc: {acc1:.2f}%, Params: {pars1:,}", flush=True)
                     pop.append([e1, fit1, acc1, pars1])
             else:
-                print(f"[Init V10] Evaluando individuo {len(pop)+1}/{N} en GPU...", flush=True)
-                fit1, acc1, pars1 = _evaluate_individual(
-                    e1, n_channels, out_size, n_classes, device1,
-                    num_epochs, loss_func, train_dl, val_dl, lr, w, max_params
-                )
+                print(f"[Init V10] Evaluando individuo {len(pop)+1}/{N}...", flush=True)
+                fit1, acc1, pars1 = _eval(e1)
                 evals += 1
                 evaluated_history.append((e1, fit1, acc1))
                 print(f"[Sequential Init V10] Ind {len(pop)+1}/{N} -> Fit: {fit1:.4f}, Acc: {acc1:.2f}%, Params: {pars1:,}", flush=True)
@@ -435,21 +444,15 @@ def green_DeepGA_v10(execution: int, memoryC: bool, train_epochs: int, train_dl:
             # Evaluación secuencial en GPU de los 2 candidatos ganadores
             for cand, score, pred_mu, feats in selected_pair:
                 if memoryC:
-                    strID = str([cand.n_conv, cand.n_full, cand.first_level, cand.second_level])
+                    strID = str([cand.n_conv, cand.n_full, cand.first_level, cand.second_level]) if hasattr(cand, 'first_level') else str(cand)
                     if strID in cacheM:
                         fit, acc, pars = cacheM[strID]
                     else:
-                        fit, acc, pars = _evaluate_individual(
-                            cand, n_channels, out_size, n_classes, device1,
-                            num_epochs, loss_func, train_dl, val_dl, lr, w, max_params
-                        )
+                        fit, acc, pars = _eval(cand)
                         cacheM[strID] = [fit, acc, pars]
                         evals += 1
                 else:
-                    fit, acc, pars = _evaluate_individual(
-                        cand, n_channels, out_size, n_classes, device1,
-                        num_epochs, loss_func, train_dl, val_dl, lr, w, max_params
-                    )
+                    fit, acc, pars = _eval(cand)
                     evals += 1
 
                 # Registrar error de predicción del subrogado

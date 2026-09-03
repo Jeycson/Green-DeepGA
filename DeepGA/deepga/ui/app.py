@@ -3,6 +3,9 @@
 Interfaz Gráfica Web para DeepGA V10 (Streamlit).
 Permite configurar hiperparámetros, cargar datasets personalizados (carpetas o zip),
 lanzar la optimización evolutiva y visualizar la convergencia y métricas en tiempo real.
+
+Por defecto utiliza la configuración óptima calibrada mediante irace (best_configuration_4.json).
+La modificación manual de hiperparámetros está protegida bajo un panel de modo experto.
 """
 
 import os
@@ -38,7 +41,7 @@ def main():
     st.title("🧬 DeepGA V10: Explorador Evolutivo de Arquitecturas")
     st.markdown("""
     Optimización de arquitecturas CNN mediante algoritmos genéticos mejorados con feromonas (**ACO-Enhanced DeepGA V10**).
-    Carga tu propio dataset, ajusta los hiperparámetros e inicia la búsqueda de la red óptima.
+    Carga tu propio dataset y ejecuta la búsqueda con la **configuración óptima calibrada por irace**.
     """)
 
     # ----------------------------------------------------
@@ -46,25 +49,63 @@ def main():
     # ----------------------------------------------------
     st.sidebar.header("⚙️ Configuración del Algoritmo")
 
-    st.sidebar.subheader("Población y Evolución")
-    pop_size = st.sidebar.slider("Tamaño de Población (N)", min_value=4, max_value=50, value=10, step=2)
-    generations = st.sidebar.slider("Generaciones (T)", min_value=1, max_value=30, value=5, step=1)
-    crossover_rate = st.sidebar.slider("Probabilidad de Cruce (cr)", 0.1, 1.0, 0.8, 0.05)
-    mutation_rate = st.sidebar.slider("Probabilidad de Mutación (mr)", 0.01, 0.5, 0.15, 0.01)
-    weight_params = st.sidebar.slider("Penalización por Complejidad (w)", 0.0, 0.5, 0.10, 0.01)
+    # Configuración óptima por defecto
+    opt_cfg = DeepGAConfig.optimal()
 
-    st.sidebar.subheader("Feromonas V10 (ACO)")
-    alpha = st.sidebar.slider("Sensibilidad Feromonas (alpha)", 0.5, 3.0, 1.2, 0.1)
-    rho = st.sidebar.slider("Evaporación Feromonas (rho)", 0.01, 0.5, 0.10, 0.01)
-    top_k_ratio = st.sidebar.slider("Ratio Élite Depósito Feromona", 0.1, 0.8, 0.35, 0.05)
+    st.sidebar.success("✅ **Configuración Óptima Activa** (irace best_configuration_4)")
+    st.sidebar.caption(
+        f"• Población: {opt_cfg.pop_size}  \n"
+        f"• Generaciones: {opt_cfg.generations}  \n"
+        f"• Learning Rate: {opt_cfg.learning_rate}  \n"
+        f"• Cruce: {opt_cfg.crossover_rate:.3f} | Mutación: {opt_cfg.mutation_rate:.3f}  \n"
+        f"• Feromonas (Alpha: {opt_cfg.alpha:.3f}, Rho: {opt_cfg.rho:.3f})"
+    )
 
-    st.sidebar.subheader("Entrenamiento y Hardware")
-    train_epochs = st.sidebar.number_input("Épocas de búsqueda rápida", min_value=1, max_value=20, value=2)
-    final_epochs = st.sidebar.number_input("Épocas de re-entrenamiento final", min_value=0, max_value=100, value=5)
+    # Parámetros básicos de ejecución
+    st.sidebar.subheader("Hardware y Dataset")
     batch_size = st.sidebar.selectbox("Batch Size", [16, 32, 64, 128], index=2)
-    lr = st.sidebar.select_slider("Learning Rate", options=[0.0001, 0.0005, 0.001, 0.005, 0.01], value=0.001)
     device = st.sidebar.selectbox("Dispositivo", ["auto", "cuda", "cpu"], index=0)
     seed = st.sidebar.number_input("Semilla Aleatoria", value=42)
+
+    # PANEL PROTEGIDO / OCULTO: MODO EXPERTO
+    with st.sidebar.expander("🔒 Ajustes Avanzados (Solo Expertos)", expanded=False):
+        st.warning(
+            "⚠️ **ADVERTENCIA:**  \n"
+            "Los valores por defecto provienen de una calibración exhaustiva con **irace** "
+            "(`best_configuration_4.json`). Modificar estos parámetros sin comprender su impacto "
+            "en la convergencia estocástica puede degradar los resultados."
+        )
+        enable_expert = st.checkbox("Deseo modificar la configuración óptima manualmente", value=False)
+
+        if enable_expert:
+            st.subheader("Evolución y Población")
+            pop_size = st.slider("Tamaño de Población (N)", min_value=4, max_value=50, value=opt_cfg.pop_size, step=1)
+            generations = st.slider("Generaciones (T)", min_value=1, max_value=50, value=opt_cfg.generations, step=1)
+            crossover_rate = st.slider("Probabilidad de Cruce (cr)", 0.1, 1.0, opt_cfg.crossover_rate, 0.01)
+            mutation_rate = st.slider("Probabilidad de Mutación (mr)", 0.01, 0.5, opt_cfg.mutation_rate, 0.01)
+            tournament_size = st.slider("Tamaño Torneo", 2, 10, opt_cfg.tournament_size, 1)
+
+            st.subheader("Feromonas V10 (ACO)")
+            alpha = st.slider("Sensibilidad Feromonas (alpha)", 0.1, 3.0, opt_cfg.alpha, 0.05)
+            rho = st.slider("Evaporación Feromonas (rho)", 0.01, 0.5, opt_cfg.rho, 0.01)
+            top_k_ratio = st.slider("Ratio Élite Depósito Feromona", 0.05, 0.8, opt_cfg.top_k_ratio, 0.01)
+
+            st.subheader("Entrenamiento")
+            lr = st.number_input("Learning Rate", value=opt_cfg.learning_rate, format="%.5f")
+            train_epochs = st.number_input("Épocas de evaluación rápida", min_value=1, max_value=20, value=opt_cfg.train_epochs)
+            final_epochs = st.number_input("Épocas de re-entrenamiento final", min_value=0, max_value=100, value=opt_cfg.final_epochs)
+        else:
+            pop_size = opt_cfg.pop_size
+            generations = opt_cfg.generations
+            crossover_rate = opt_cfg.crossover_rate
+            mutation_rate = opt_cfg.mutation_rate
+            tournament_size = opt_cfg.tournament_size
+            alpha = opt_cfg.alpha
+            rho = opt_cfg.rho
+            top_k_ratio = opt_cfg.top_k_ratio
+            lr = opt_cfg.learning_rate
+            train_epochs = opt_cfg.train_epochs
+            final_epochs = opt_cfg.final_epochs
 
     # ----------------------------------------------------
     # PANEL PRINCIPAL: Selección y Carga de Datos
@@ -115,18 +156,19 @@ def main():
             return
 
         cfg = DeepGAConfig(
+            expert_mode=enable_expert,
             pop_size=pop_size,
             generations=generations,
             crossover_rate=crossover_rate,
             mutation_rate=mutation_rate,
-            weight_params=weight_params,
+            tournament_size=tournament_size,
             alpha=alpha,
             rho=rho,
             top_k_ratio=top_k_ratio,
+            learning_rate=lr,
             train_epochs=train_epochs,
             final_epochs=final_epochs,
             batch_size=batch_size,
-            learning_rate=lr,
             device=device,
             seed=seed,
             output_dir="./results_v10_ui"
@@ -140,7 +182,7 @@ def main():
         searcher = DeepGASearch(config=cfg)
 
         try:
-            with st.spinner("Evolucionando arquitecturas neuronales..."):
+            with st.spinner("Evolucionando arquitecturas neuronales con V10..."):
                 searcher.fit(dataset=dataset_target)
                 progress_bar.progress(100)
                 status_text.text("¡Búsqueda y re-entrenamiento completados!")

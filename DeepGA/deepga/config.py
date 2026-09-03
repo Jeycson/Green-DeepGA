@@ -1,68 +1,165 @@
 # -*- coding: utf-8 -*-
 """
 Módulo de Configuración para DeepGA (Enfoque Versión 10).
-Proporciona estructuras de datos fuertemente tipadas y serializables
-para controlar todos los aspectos de la búsqueda evolutiva guiada por feromonas (V10).
+Los valores por defecto corresponden exactamente a la configuración óptima
+calibrada mediante irace ('irace_tuning/best_configuration_4.json').
+
+La modificación de parámetros está protegida bajo 'expert_mode'.
 """
 
 import json
 import os
+import warnings
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any
+
+# Ruta al archivo de calibración óptima por irace
+IRACE_CONFIG_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "irace_tuning",
+    "best_configuration_4.json"
+)
+
+
+def _load_irace_defaults() -> Dict[str, Any]:
+    """Carga los parámetros óptimos desde best_configuration_4.json si existe."""
+    if os.path.exists(IRACE_CONFIG_PATH):
+        try:
+            with open(IRACE_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # Respaldo con los valores exactos de best_configuration_4.json
+    return {
+        "variant": "v10",
+        "lr": 0.0009,
+        "pop_size": 17,
+        "generations": 32,
+        "t_size": 5,
+        "cr": 0.5436,
+        "mr": 0.2321,
+        "mr_min": 0.175,
+        "mr_max": 0.9218,
+        "final_epoch": 9,
+        "pool_candidates_factor": 3,
+        "kappa": 0.1464,
+        "rho": 0.2824,
+        "alpha": 0.527,
+        "top_k_ratio": 0.2815,
+        "n_islands": 1,
+        "migration_interval": 32,
+        "migration_size": 1
+    }
+
+
+IRACE_DEFAULTS = _load_irace_defaults()
 
 
 @dataclass
 class DeepGAV10Config:
     """
-    Configuración completa para DeepGA Versión 10 (ACO-Enhanced Pheromone-Guided Evolution).
+    Configuración para DeepGA Versión 10 (ACO-Enhanced Pheromone-Guided Evolution).
+    Por defecto utiliza los hiperparámetros óptimos de irace (best_configuration_4).
+
+    Si se modifican los hiperparámetros óptimos sin 'expert_mode=True',
+    se emitirá un aviso advirtiendo sobre posibles pérdidas de rendimiento.
     """
 
-    # --- Parámetros Generales de la Población y Búsqueda ---
-    pop_size: int = 10                  # N: Tamaño de la población de candidatos
-    generations: int = 5                # T: Número de generaciones evolutivas
-    crossover_rate: float = 0.80        # cr: Probabilidad de cruce genético
-    mutation_rate: float = 0.15         # mr: Probabilidad de mutación base
-    tournament_size: int = 3            # t_size: Tamaño de torneo para selección
-    weight_params: float = 0.10         # w: Penalización de complejidad de parámetros en fitness
-    seed: Optional[int] = 42            # Semilla pseudoaleatoria para reproducibilidad
+    # --- Modo de Protección ---
+    expert_mode: bool = False           # Debe ser True para modificar parámetros deliberadamente
 
-    # --- Parámetros Específicos de V10 (ACO y Feromonas Arquitectónicas) ---
-    alpha: float = 1.2                  # Sensibilidad / peso de feromonas en selección probabilística
-    rho: float = 0.10                   # Tasa de evaporación de feromonas por generación
-    top_k_ratio: float = 0.35           # Fracción de individuos élite que depositan feromonas
-    mr_min: float = 0.10                # Tasa de mutación adaptativa mínima
-    mr_max: float = 0.85                # Tasa de mutación adaptativa máxima
-    pool_candidates_factor: int = 5     # Factor de sobre-muestreo para evaluación con meta-modelo
-    kappa: float = 0.10                 # Factor de exploración UCB en el modelo subrogado
+    # --- Parámetros Calibrados Óptimos por irace (best_configuration_4) ---
+    pop_size: int = IRACE_DEFAULTS.get("pop_size", 17)
+    generations: int = IRACE_DEFAULTS.get("generations", 32)
+    crossover_rate: float = IRACE_DEFAULTS.get("cr", 0.5436)
+    mutation_rate: float = IRACE_DEFAULTS.get("mr", 0.2321)
+    tournament_size: int = IRACE_DEFAULTS.get("t_size", 5)
+    learning_rate: float = IRACE_DEFAULTS.get("lr", 0.0009)
+    final_epochs: int = IRACE_DEFAULTS.get("final_epoch", 9)
 
-    # --- Espacio de Búsqueda Arquitectónica (para CNNs) ---
-    min_conv: int = 2                   # Mínimo de bloques convolucionales
-    max_conv: int = 5                   # Máximo de bloques convolucionales
-    min_full: int = 1                   # Mínimo de capas densas (Fully Connected)
-    max_full: int = 3                   # Máximo de capas densas
-    max_params: int = 1_500_000         # Límite máximo permitido de parámetros
+    # Parámetros específicos de Feromonas y Subrogado V10
+    alpha: float = IRACE_DEFAULTS.get("alpha", 0.527)
+    rho: float = IRACE_DEFAULTS.get("rho", 0.2824)
+    top_k_ratio: float = IRACE_DEFAULTS.get("top_k_ratio", 0.2815)
+    mr_min: float = IRACE_DEFAULTS.get("mr_min", 0.175)
+    mr_max: float = IRACE_DEFAULTS.get("mr_max", 0.9218)
+    pool_candidates_factor: int = IRACE_DEFAULTS.get("pool_candidates_factor", 3)
+    kappa: float = IRACE_DEFAULTS.get("kappa", 0.1464)
 
-    # --- Configuración de Entrenamiento ---
-    learning_rate: float = 0.001        # Tasa de aprendizaje (Adam)
-    train_epochs: int = 2               # Épocas de entrenamiento rápido durante el GA
-    final_epochs: int = 10              # Épocas para re-entrenar la mejor arquitectura encontrada
-    batch_size: int = 64                # Tamaño del lote
-    device: str = "auto"                # Dispositivo: "auto", "cuda", "cpu"
-    memory_cleanup: bool = True         # Liberar memoria de GPU tras evaluar cada candidato
-    preload_gpu: bool = False           # Precargar dataset completo en VRAM para máxima velocidad
+    # --- Parámetros de Estructura y Penalización ---
+    weight_params: float = 0.10
+    seed: Optional[int] = 42
+
+    # --- Espacio de Búsqueda Arquitectónica (CNNs) ---
+    min_conv: int = 2
+    max_conv: int = 5
+    min_full: int = 1
+    max_full: int = 3
+    max_params: int = 1_500_000
+
+    # --- Entrenamiento y Recursos ---
+    train_epochs: int = 2               # Épocas de evaluación rápida durante GA
+    batch_size: int = 64
+    device: str = "auto"
+    memory_cleanup: bool = True
+    preload_gpu: bool = False
 
     # --- Especificaciones del Dataset / Problema ---
-    dataset_name: str = "custom"        # Nombre identificador del dataset
-    n_channels: int = 3                 # Canales de entrada (3=RGB, 1=Grises)
-    n_classes: int = 10                 # Número de clases a clasificar
-    image_size: int = 32                # Resolución cuadrada de entrada (e.g. 32, 64, 128, 224)
+    dataset_name: str = "custom"
+    n_channels: int = 3
+    n_classes: int = 10
+    image_size: int = 32
 
-    # --- Rutas de Salida y Monitoreo ---
+    # --- Salidas y Monitoreo ---
     checkpoint_dir: str = "./checkpoints_v10"
     output_dir: str = "./results_v10"
-    track_carbon: bool = True           # Medir emisiones de CO2 con CodeCarbon
-    save_txt: bool = True               # Guardar resúmenes legibles en .txt
-    execution: int = 1                  # Identificador numérico de ejecución
+    track_carbon: bool = True
+    save_txt: bool = True
+    execution: int = 1
+
+    def __post_init__(self):
+        """Valida si se han alterado los hiperparámetros óptimos de irace."""
+        # Claves críticas calibradas por irace
+        critical_keys = {
+            "pop_size": IRACE_DEFAULTS.get("pop_size", 17),
+            "generations": IRACE_DEFAULTS.get("generations", 32),
+            "crossover_rate": IRACE_DEFAULTS.get("cr", 0.5436),
+            "mutation_rate": IRACE_DEFAULTS.get("mr", 0.2321),
+            "tournament_size": IRACE_DEFAULTS.get("t_size", 5),
+            "learning_rate": IRACE_DEFAULTS.get("lr", 0.0009),
+            "alpha": IRACE_DEFAULTS.get("alpha", 0.527),
+            "rho": IRACE_DEFAULTS.get("rho", 0.2824),
+            "top_k_ratio": IRACE_DEFAULTS.get("top_k_ratio", 0.2815),
+            "final_epochs": IRACE_DEFAULTS.get("final_epoch", 9)
+        }
+
+        modified = []
+        for key, opt_val in critical_keys.items():
+            curr_val = getattr(self, key)
+            if abs(curr_val - opt_val) > 1e-5:
+                modified.append(f"{key}: {curr_val} (óptimo irace: {opt_val})")
+
+        if modified and not self.expert_mode:
+            warnings.warn(
+                "\n⚠️ [ADVERTENCIA DE CONFIGURACIÓN ÓPTIMA]:\n"
+                "Se han modificado parámetros respecto a la configuración óptima encontrada por irace:\n"
+                + "\n".join([f"   • {m}" for m in modified]) +
+                "\nModificar estos valores sin comprender sus efectos puede degradar la convergencia.\n"
+                "Para suprimir este aviso en código, active 'expert_mode=True'.",
+                UserWarning,
+                stacklevel=2
+            )
+
+    @classmethod
+    def optimal(cls) -> "DeepGAV10Config":
+        """Retorna la configuración óptima estricta encontrada por irace."""
+        return cls(expert_mode=False)
+
+    @classmethod
+    def custom(cls, **kwargs) -> "DeepGAV10Config":
+        """Permite a un usuario avanzado definir parámetros personalizados en modo experto."""
+        kwargs["expert_mode"] = True
+        return cls(**kwargs)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convierte la configuración a un diccionario estándar."""
@@ -89,5 +186,5 @@ class DeepGAV10Config:
         return cls.from_dict(data)
 
 
-# Alias amigable para usar como configuración general
+# Alias amigable
 DeepGAConfig = DeepGAV10Config
