@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deepga"
+version = "0.1.0"
+description = "DeepGA: Framework evolutivo de búsqueda de arquitecturas neuronales (NAS) y optimización general."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "DeepGA Contributors" }
+]
+keywords = ["neural-architecture-search", "genetic-algorithms", "deep-learning", "pytorch", "optimization"]
+
+dependencies = [
+    "torch>=1.7.0",
+    "torchvision>=0.8.0",
+    "numpy>=1.19.0",
+    "pandas>=1.1.0",
+    "Pillow>=8.0.0",
+    "scikit-learn>=1.0.0",
+    "matplotlib>=3.3.0",
+    "seaborn>=0.11.0"
+]
+
+[project.optional-dependencies]
+carbon = [
+    "codecarbon>=2.0.0"
+]
+cli = [
+    "typer>=0.9.0",
+    "rich>=13.0.0"
+]
+ui = [
+    "streamlit>=1.30.0",
+    "plotly>=5.15.0"
+]
+all = [
+    "deepga[carbon,cli,ui]"
+]
+
+[project.scripts]
+deepga = "deepga.cli.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["deepga*", "variants*"]
